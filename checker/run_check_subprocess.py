@@ -32,9 +32,10 @@ PCM_KEYWORDS = [
     "mht-cet (pcm)",       # exact card label when PCM is released
     "mht cet (pcm)",
     "mhtcet (pcm)",
-    "PCM"
-    "MHT-CET (PCM) 2026"
-    "MHT-CET (PCM) 2026 (Attempt 1)"
+    "PCM",
+    "PCB",
+    "MHT-CET (PCM) 2026",
+    "MHT-CET (PCM) 2026 (Attempt 1)",
     "pcm scorecard",
     "pcm score card",
     "pcm group",
