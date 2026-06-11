@@ -1,0 +1,227 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>MHTCET Result Checker — Live Dashboard</title>
+  <meta name="description" content="Live monitoring dashboard for MHTCET PCM Scorecard availability. Get instant Twilio alerts when your result is out." />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/static/style.css" />
+</head>
+<body>
+
+<!-- ── Background Particles ────────────────────────────────── -->
+<div class="bg-particles" id="particles"></div>
+
+<!-- ── Header ────────────────────────────────────────────────── -->
+<header class="header">
+  <div class="header-inner">
+    <div class="logo">
+      <div class="logo-icon">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
+        </svg>
+      </div>
+      <div>
+        <h1>MHTCET Checker</h1>
+        <span class="subtitle">PCM Scorecard Monitor</span>
+      </div>
+    </div>
+    <div class="header-status">
+      <span class="status-badge" id="main-status-badge">
+        <span class="status-dot" id="status-dot"></span>
+        <span id="status-text">Loading...</span>
+      </span>
+    </div>
+  </div>
+</header>
+
+<!-- ── Main Content ───────────────────────────────────────────── -->
+<main class="main">
+
+  <!-- Alert Banner (shown when PCM found) -->
+  <div class="alert-banner hidden" id="alert-banner">
+    <div class="alert-icon">🚨</div>
+    <div class="alert-content">
+      <strong>PCM SCORECARD IS AVAILABLE!</strong>
+      <span>Login immediately and download your scorecard.</span>
+    </div>
+    <a href="{{ login_url }}" target="_blank" class="alert-link">Open Portal →</a>
+  </div>
+
+  <!-- ── Stats Grid ─────────────────────────────────────────── -->
+  <section class="stats-grid">
+
+    <div class="stat-card" id="card-pcm">
+      <div class="stat-icon-wrap pcm-icon">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+        </svg>
+      </div>
+      <div class="stat-info">
+        <div class="stat-label">PCM Scorecard</div>
+        <div class="stat-value" id="pcm-status">—</div>
+      </div>
+      <div class="stat-glow"></div>
+    </div>
+
+    <div class="stat-card" id="card-login">
+      <div class="stat-icon-wrap login-icon">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M15 3h4a2 2 0 012 2v14a2 2 0 01-2 2h-4M10 17l5-5-5-5M15 12H3"/>
+        </svg>
+      </div>
+      <div class="stat-info">
+        <div class="stat-label">Last Login</div>
+        <div class="stat-value" id="login-status">—</div>
+      </div>
+      <div class="stat-glow"></div>
+    </div>
+
+    <div class="stat-card" id="card-lastcheck">
+      <div class="stat-icon-wrap time-icon">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
+        </svg>
+      </div>
+      <div class="stat-info">
+        <div class="stat-label">Last Checked</div>
+        <div class="stat-value small" id="last-checked">Never</div>
+      </div>
+      <div class="stat-glow"></div>
+    </div>
+
+    <div class="stat-card" id="card-nextcheck">
+      <div class="stat-icon-wrap next-icon">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 11-2.12-9.36L23 10"/>
+        </svg>
+      </div>
+      <div class="stat-info">
+        <div class="stat-label">Next Check In</div>
+        <div class="stat-value mono" id="next-check-countdown">—</div>
+      </div>
+      <div class="stat-glow"></div>
+    </div>
+
+    <div class="stat-card">
+      <div class="stat-icon-wrap total-icon">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M3 3h18v18H3zM9 9h6v6H9z"/>
+        </svg>
+      </div>
+      <div class="stat-info">
+        <div class="stat-label">Total Checks</div>
+        <div class="stat-value mono" id="total-checks">0</div>
+      </div>
+      <div class="stat-glow"></div>
+    </div>
+
+    <div class="stat-card">
+      <div class="stat-icon-wrap error-icon">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
+        </svg>
+      </div>
+      <div class="stat-info">
+        <div class="stat-label">Consecutive Errors</div>
+        <div class="stat-value mono" id="consec-errors">0</div>
+      </div>
+      <div class="stat-glow"></div>
+    </div>
+
+  </section>
+
+  <!-- ── Control Panel ───────────────────────────────────────── -->
+  <section class="panel controls-panel">
+    <div class="panel-header">
+      <h2>Controls</h2>
+      <span class="panel-badge" id="checker-running-badge">Stopped</span>
+    </div>
+    <div class="controls-grid">
+      <button class="btn btn-start" id="btn-start" onclick="controlChecker('start')">
+        <svg viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+        Start Checker
+      </button>
+      <button class="btn btn-stop" id="btn-stop" onclick="controlChecker('stop')">
+        <svg viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>
+        Stop Checker
+      </button>
+      <button class="btn btn-run" id="btn-run-now" onclick="runNow()">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 11-2.12-9.36L23 10"/></svg>
+        Check Now
+      </button>
+      <button class="btn btn-reset" onclick="resetAlert()">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 102.13-9.36L1 10"/></svg>
+        Reset Alert
+      </button>
+    </div>
+
+    <div class="test-section">
+      <h3>Test Notifications</h3>
+      <div class="test-buttons">
+        <button class="btn btn-test" onclick="testNotification('whatsapp')">
+          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413Z"/></svg>
+          Test WhatsApp
+        </button>
+        <button class="btn btn-test" onclick="testNotification('call')">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07A19.5 19.5 0 013.07 9.81a19.79 19.79 0 01-3.07-8.63A2 2 0 012 2h3a2 2 0 012 1.72c.127.96.361 1.903.7 2.81a2 2 0 01-.45 2.11L6.91 9.91a16 16 0 006.06 6.06l1.27-1.27a2 2 0 012.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0122 16.92z"/></svg>
+          Test Call
+        </button>
+        <button class="btn btn-test" onclick="testNotification('both')">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 20V10M12 20V4M6 20v-6"/></svg>
+          Test Both
+        </button>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── Last Error ──────────────────────────────────────────── -->
+  <div class="error-banner hidden" id="error-banner">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+    <span id="error-text"></span>
+  </div>
+
+  <!-- ── Check History Log ───────────────────────────────────── -->
+  <section class="panel log-panel">
+    <div class="panel-header">
+      <h2>Check History</h2>
+      <span class="refresh-info">Auto-refreshes every 30s</span>
+    </div>
+    <div class="table-wrap">
+      <table class="log-table" id="log-table">
+        <thead>
+          <tr>
+            <th>#</th>
+            <th>Timestamp</th>
+            <th>Login</th>
+            <th>PCM Found</th>
+            <th>Notes</th>
+          </tr>
+        </thead>
+        <tbody id="log-body">
+          <tr><td colspan="5" class="empty-row">No checks yet. Start the checker!</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- ── Footer ─────────────────────────────────────────────── -->
+  <footer class="footer">
+    <div>
+      MHTCET Checker &nbsp;•&nbsp; Built with Playwright + Flask + Twilio
+    </div>
+    <div>
+      Monitoring <a href="{{ login_url }}" target="_blank">{{ login_url }}</a>
+    </div>
+  </footer>
+
+</main>
+
+<!-- ── Toast Notification ─────────────────────────────────────── -->
+<div class="toast" id="toast"></div>
+
+<script src="/static/dashboard.js"></script>
+</body>
+</html>

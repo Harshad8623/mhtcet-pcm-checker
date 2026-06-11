@@ -1,0 +1,8 @@
+flask==3.0.3
+playwright==1.44.0
+twilio==9.1.1
+python-dotenv==1.0.1
+SQLAlchemy==2.0.30
+APScheduler==3.10.4
+Werkzeug==3.0.3
+requests==2.32.3
