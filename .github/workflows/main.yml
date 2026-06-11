@@ -1,0 +1,46 @@
+name: MHT-CET PCM Scorecard Checker
+on:
+  schedule:
+    - cron: '*/15 * * * *'   # every 15 minutes, 24/7
+  workflow_dispatch:           # allow manual trigger from GitHub website
+jobs:
+  check-pcm:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Cache pip packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-${{ hashFiles('requirements.txt') }}
+      - name: Install Python dependencies
+        run: pip install -r requirements.txt
+      - name: Install Playwright + Chromium
+        run: |
+          playwright install chromium
+          playwright install-deps chromium
+      - name: Run PCM Check
+        env:
+          MHTCET_EMAIL:            ${{ secrets.MHTCET_EMAIL }}
+          MHTCET_PASSWORD:         ${{ secrets.MHTCET_PASSWORD }}
+          TWILIO_ACCOUNT_SID:      ${{ secrets.TWILIO_ACCOUNT_SID }}
+          TWILIO_AUTH_TOKEN:       ${{ secrets.TWILIO_AUTH_TOKEN }}
+          TWILIO_PHONE_NUMBER:     ${{ secrets.TWILIO_PHONE_NUMBER }}
+          YOUR_PHONE_NUMBER:       ${{ secrets.YOUR_PHONE_NUMBER }}
+          TWILIO_WHATSAPP_NUMBER:  ${{ secrets.TWILIO_WHATSAPP_NUMBER }}
+          LOGIN_URL:               https://portal-2026.maharashtracet.org/
+        run: python checker/github_check.py
+      - name: Upload screenshot on PCM found
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pcm-screenshots
+          path: screenshots/
+          if-no-files-found: ignore
+          retention-days: 7
