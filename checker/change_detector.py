@@ -34,7 +34,7 @@ HEADERS = {
 
 # ── Targets to monitor ────────────────────────────────────────────────────────
 
-# 1. CET Cell public result/download pages (no login)
+# 1. CET Cell public result pages (no login)
 CETCELL_RESULT_URLS = [
     "https://cetcell.mahacet.org/mht-cet-result/",
     "https://cetcell.mahacet.org/mht-cet-2026-result/",
@@ -61,21 +61,11 @@ PCM_RESULT_DECLARED_PHRASES = [
     "mht-cet (pcm group",
 ]
 
-# 2. scorecard.mhexam.com endpoint patterns for PCM
-# We must GET (not HEAD) and verify the response contains scorecard content
-MHEXAM_PCM_PATTERNS = [
-    "https://scorecard.mhexam.com/MAH-PCM/",
-    "https://scorecard.mhexam.com/MAH-PCM-2026/",
-    "https://scorecard.mhexam.com/pcm/",
-]
+# NOTE: scorecard.mhexam.com URLs (e.g. /MAH-PCB-DO1BAM3Y/) require a secret
+# token in the URL that we cannot guess. Checking /MAH-PCM/ always returns 404.
+# Detection is done via cetcell notices + portal login check instead.
 
-# Content that proves a scorecard endpoint is real (not a generic 200)
-MHEXAM_REAL_CONTENT = [
-    "scorecard", "score card", "mht-cet", "mhcet",
-    "s3.amazonaws.com", "download", "pdf",
-]
-
-# 3. Portal JS bundle — changes when backend deploys new frontend
+# 2. Portal JS bundle — changes when backend deploys new frontend
 PORTAL_JS_URL = "https://portal-2026.maharashtracet.org/"
 
 
@@ -151,62 +141,7 @@ def _check_cetcell_result_pages(state: dict) -> dict:
     return result
 
 
-# ── Check 2: scorecard.mhexam.com PCM endpoint ───────────────────────────────
-
-def _check_mhexam_pcm(state: dict) -> dict:
-    """
-    Try PCM scorecard endpoint patterns on mhexam.com.
-    MUST verify real scorecard content in response body — not just HTTP 200.
-    """
-    result = {
-        "pcm_endpoint_live": False,
-        "live_url": None,
-        "details": [],
-    }
-    prev_status = state.get("mhexam_pcm_status", {})
-    new_status  = {}
-
-    for url in MHEXAM_PCM_PATTERNS:
-        resp = _safe_get(url, timeout=10)  # GET, not HEAD
-        if not resp:
-            new_status[url] = "error"
-            continue
-
-        status = resp.status_code
-        body   = resp.text.lower()
-        new_status[url] = status
-
-        # Verify real scorecard content in body (prevents generic 200 false positives)
-        has_real_content = any(kw in body for kw in MHEXAM_REAL_CONTENT)
-
-        # Check if redirected to S3 (definitive proof)
-        redirected_to_s3 = (
-            "s3.amazonaws.com" in resp.url or
-            "s3.ap-south-1" in resp.url or
-            any("s3" in str(r.url) for r in resp.history)
-        )
-
-        if (status in (200, 301, 302, 307, 308)) and (has_real_content or redirected_to_s3):
-            result["pcm_endpoint_live"] = True
-            result["live_url"] = url
-            result["details"].append({
-                "url": url,
-                "status": status,
-                "redirected_to": resp.url,
-                "has_real_content": has_real_content,
-            })
-
-        # Only flag as changed if it WAS 404 and now has real content
-        prev = prev_status.get(url)
-        if prev == 404 and status != 404 and has_real_content:
-            result["pcm_endpoint_live"] = True
-            result["live_url"] = url
-
-    state["mhexam_pcm_status"] = new_status
-    return result
-
-
-# ── Check 3: Portal JS bundle hash (deploy detection) ────────────────────────
+# ── Check 2: Portal JS bundle hash (deploy detection) ────────────────────────
 
 def _check_portal_bundle(state: dict) -> dict:
     """
@@ -257,7 +192,9 @@ def _check_portal_bundle(state: dict) -> dict:
 
 def check_portal_changes() -> dict:
     """
-    Run all 3 change detection checks.
+    Run 2 change detection checks (mhexam removed — requires secret token):
+      1. cetcell.mahacet.org result pages — specific PCM declaration phrases
+      2. Portal JS bundle hash — detects new backend deploy
     Returns aggregated result dict.
     """
     result = {
@@ -277,18 +214,16 @@ def check_portal_changes() -> dict:
     try:
         state = _load_state()
 
-        # ── Run all 3 checks ─────────────────────────────────────────────────
+        # ── Run 2 checks ─────────────────────────────────────────────────────
         cetcell = _check_cetcell_result_pages(state)
-        mhexam  = _check_mhexam_pcm(state)
         bundle  = _check_portal_bundle(state)
 
         result["details"] = {
             "cetcell": cetcell,
-            "mhexam":  mhexam,
             "bundle":  bundle,
         }
 
-        # ── Aggregate significance ───────────────────────────────────────────
+        # ── Aggregate significance ────────────────────────────────────────────
         summaries = []
 
         # PCM found in cetcell pages (only with specific declaration phrases)
