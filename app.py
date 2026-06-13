@@ -38,6 +38,8 @@ from notifications.whatsapp import (
     MSG_PCM_FOUND, MSG_LOGIN_FAILED, MSG_PORTAL_CHANGED,
     MSG_WEBSITE_DOWN, MSG_CHECKER_STARTED, MSG_TEST
 )
+from checker.public_monitor import check_public_notices
+from checker.change_detector import check_portal_changes
 
 # Path to the subprocess checker script
 SUBPROCESS_CHECKER = os.path.join(os.path.dirname(__file__), "checker", "run_check_subprocess.py")
@@ -233,6 +235,112 @@ def run_check():
         _check_lock.release()
 
 
+# ── Public Notice Monitor ─────────────────────────────────────────────────────
+_monitor_lock  = threading.Lock()
+_detector_lock = threading.Lock()
+
+
+def run_public_monitor():
+    """
+    Check cetcell.mahacet.org every 60s for new PCM notices.
+    Alerts via call + WhatsApp if a new PCM notice is detected.
+    """
+    if not _monitor_lock.acquire(blocking=False):
+        return  # Already running
+
+    try:
+        result = check_public_notices()
+
+        if not result["success"]:
+            logger.warning(f"[PUBLIC] Monitor error: {result['error']}")
+            return
+
+        if result["page_changed"]:
+            logger.info(f"[PUBLIC] cetcell.mahacet.org changed! New notices: {result['new_notices'][:3]}")
+        else:
+            logger.debug("[PUBLIC] cetcell.mahacet.org — no changes.")
+
+        if result["new_pcm_notice"]:
+            logger.warning(f"[PUBLIC] *** NEW PCM NOTICE DETECTED! Keywords: {result['pcm_keywords_found']} ***")
+
+            wa_msg = (
+                "🚨 *NEW PCM NOTICE on CET Cell Website!* 🚨\n\n"
+                "A new PCM-related announcement was detected at:\n"
+                "https://cetcell.mahacet.org/\n\n"
+                f"Keywords found: {', '.join(result['pcm_keywords_found'])}\n\n"
+                "👉 Check the Score Card on:\n"
+                "https://portal-2026.maharashtracet.org\n\n"
+                "⚡ Login NOW and download your PCM scorecard!"
+            )
+            twiml = (
+                "<Response><Say voice='alice' language='en-IN'>"
+                "Alert! A new PCM related notice has been posted on the CET Cell website. "
+                "Please check cetcell dot mahacet dot org immediately. "
+                "Your PCM scorecard may now be available!"
+                "</Say></Response>"
+            )
+            _send_whatsapp_safe(wa_msg, "public_pcm_notice")
+            _make_call_with_twiml(twiml, "public_notice_call")
+
+    except Exception as e:
+        logger.exception(f"[PUBLIC] Unexpected error: {e}")
+    finally:
+        _monitor_lock.release()
+
+
+def run_change_detector():
+    """
+    Detect significant backend changes on portal-2026.maharashtracet.org.
+    Alerts via call + WhatsApp on significant changes (result upload signals).
+    """
+    if not _detector_lock.acquire(blocking=False):
+        return  # Already running
+
+    try:
+        result = check_portal_changes()
+
+        if not result["success"]:
+            logger.warning(f"[CHANGE] Detector error: {result['error']}")
+            return
+
+        if result["significant_change"]:
+            logger.warning(
+                f"[CHANGE] *** SIGNIFICANT PORTAL CHANGE DETECTED! "
+                f"Summary: {result['change_summary']} | "
+                f"Size delta: {result['size_delta']} bytes ***"
+            )
+
+            wa_msg = (
+                "⚠️ *MHT-CET Portal Backend Change Detected!* ⚠️\n\n"
+                "The portal has changed significantly — results may be uploading!\n\n"
+                f"Change: {result['change_summary']}\n"
+                f"Size change: {result['size_delta']} bytes\n\n"
+                "👉 Check NOW:\n"
+                "https://portal-2026.maharashtracet.org\n\n"
+                "⚡ Login and check Score Card section immediately!"
+            )
+            twiml = (
+                "<Response><Say voice='alice' language='en-IN'>"
+                "Warning! The MHT CET portal has changed significantly. "
+                "This may indicate that results are being uploaded right now. "
+                "Please login to portal 2026 dot maharashtracet dot org immediately "
+                "and check the Score Card section!"
+                "</Say></Response>"
+            )
+            _send_whatsapp_safe(wa_msg, "portal_change_alert")
+            _make_call_with_twiml(twiml, "change_detector_call")
+
+        elif result["changed"]:
+            logger.info(f"[CHANGE] Minor portal change (size delta: {result['size_delta']} bytes) — ignoring.")
+        else:
+            logger.debug("[CHANGE] Portal unchanged.")
+
+    except Exception as e:
+        logger.exception(f"[CHANGE] Unexpected error: {e}")
+    finally:
+        _detector_lock.release()
+
+
 def _fire_alerts():
     """Send all Twilio alerts and mark as done."""
     # 1. WhatsApp
@@ -290,6 +398,25 @@ def _make_call_safe() -> dict:
         error=result.get("error")
     )
     return result
+
+
+def _make_call_with_twiml(twiml: str, notif_type: str = "call") -> dict:
+    """Make a phone call with custom TwiML message."""
+    if not all([TWILIO_SID, TWILIO_TOKEN, TWILIO_PHONE, MY_PHONE]):
+        logger.warning("Call skipped - Twilio credentials not configured.")
+        return {"success": False, "error": "Credentials not configured"}
+    try:
+        from twilio.rest import Client
+        client = Client(TWILIO_SID, TWILIO_TOKEN)
+        call = client.calls.create(twiml=twiml, to=MY_PHONE, from_=TWILIO_PHONE)
+        log_notification(notif_type=notif_type, success=True,
+                         message=f"Call SID: {call.sid}")
+        logger.info(f"[CALL] {notif_type} sent → {MY_PHONE} (SID: {call.sid})")
+        return {"success": True, "sid": call.sid}
+    except Exception as e:
+        log_notification(notif_type=notif_type, success=False, error=str(e))
+        logger.error(f"[CALL] {notif_type} failed: {e}")
+        return {"success": False, "error": str(e)}
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -437,6 +564,7 @@ def api_run_now():
 # ══════════════════════════════════════════════════════════════════════════════
 
 def _start_scheduler():
+    # ── Job 1: Portal login + scorecard checker (every 5 min) ────────────────
     scheduler.add_job(
         func=run_check,
         trigger=IntervalTrigger(seconds=CHECK_INTERVAL, timezone="Asia/Kolkata"),
@@ -445,6 +573,27 @@ def _start_scheduler():
         replace_existing=True,
         misfire_grace_time=60
     )
+
+    # ── Job 2: Public website notice monitor (every 60 seconds) ──────────────
+    scheduler.add_job(
+        func=run_public_monitor,
+        trigger=IntervalTrigger(seconds=60, timezone="Asia/Kolkata"),
+        id="public_notice_monitor",
+        name="CET Cell Public Notice Monitor",
+        replace_existing=True,
+        misfire_grace_time=30
+    )
+
+    # ── Job 3: Portal change detector (every 2 minutes) ───────────────────────
+    scheduler.add_job(
+        func=run_change_detector,
+        trigger=IntervalTrigger(seconds=120, timezone="Asia/Kolkata"),
+        id="portal_change_detector",
+        name="Portal Backend Change Detector",
+        replace_existing=True,
+        misfire_grace_time=30
+    )
+
     if not scheduler.running:
         scheduler.start()
 
