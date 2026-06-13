@@ -22,18 +22,21 @@ HEADERS = {
 }
 
 # Keywords that indicate a PCM result/notice
+# SPECIFIC phrases that prove a PCM notice/result was posted
+# NOT generic course-name mentions like "pcm group" on an overview page
 PCM_KEYWORDS = [
-    "pcm group",
-    "mht-cet 2026 (pcm",
-    "mht-cet(pcm)",
-    "pcm result",
-    "pcm scorecard",
-    "pcm score card",
+    "result declared for mht-cet (pcm",
+    "mht-cet (pcm) result declared",
+    "pcm result declared",
+    "pcm score card available",
+    "pcm scorecard available",
     "result summary:mht-cet 2026 (pcm",
-    "result summary :mht-cet 2026 (pcm",
-    "(pcm group",
-    "pcm first attempt",
-    "pcm attempt 1",
+    "result summary : mht-cet 2026 (pcm",
+    "result summary:mht-cet(pcm",
+    "pcm group first attempt result",
+    "pcm 2026 result",
+    "mht-cet 2026 pcm result",
+    "mht-cet (pcm) 2026 (attempt",   # matches popup card title when live
 ]
 
 

@@ -39,28 +39,46 @@ CETCELL_RESULT_URLS = [
     "https://cetcell.mahacet.org/mht-cet-result/",
     "https://cetcell.mahacet.org/mht-cet-2026-result/",
     "https://cetcell.mahacet.org/result/",
-    "https://cetcell.mahacet.org/wp-json/wp/v2/posts?per_page=5&_fields=title,link,date",  # WP REST API
+    "https://cetcell.mahacet.org/wp-json/wp/v2/posts?per_page=5&_fields=title,link,date",
+]
+
+# SPECIFIC phrases that indicate a PCM RESULT DECLARATION
+# NOT generic mentions of "pcm" as a course name
+PCM_RESULT_DECLARED_PHRASES = [
+    "result declared for mht-cet (pcm",
+    "result declared for mht-cet(pcm",
+    "mht-cet (pcm) result declared",
+    "mht-cet(pcm) result declared",
+    "pcm result declared",
+    "pcm score card available",
+    "pcm scorecard available",
+    "score card available in candidate",   # + context "pcm" nearby
+    "pcm group first attempt result",
+    "pcm group second attempt result",
+    "result summary:mht-cet 2026 (pcm",
+    "result summary : mht-cet 2026 (pcm",
+    "result summary:mht-cet(pcm",
+    "pcm 2026 result",
+    "mht-cet 2026 pcm result",
 ]
 
 # 2. scorecard.mhexam.com endpoint patterns for PCM
-# PCB pattern observed: /MAH-PCB-DO1BAM3Y/ or similar
-# PCM equivalent patterns to try:
+# We must GET (not HEAD) and verify the response contains scorecard content
 MHEXAM_PCM_PATTERNS = [
     "https://scorecard.mhexam.com/MAH-PCM/",
     "https://scorecard.mhexam.com/MAH-PCM-2026/",
     "https://scorecard.mhexam.com/pcm/",
-    "https://mhexam.com/MAH-PCM/",
+]
+
+# Content that proves a scorecard endpoint is real (not a generic 200)
+MHEXAM_REAL_CONTENT = [
+    "scorecard", "score card", "mht-cet", "mhcet",
+    "s3.amazonaws.com", "download", "pdf",
 ]
 
 # 3. Portal JS bundle — changes when backend deploys new frontend
 PORTAL_JS_URL = "https://portal-2026.maharashtracet.org/"
 
-# PCM keywords to look for in any page response
-PCM_RESULT_KEYWORDS = [
-    "pcm", "pcm group", "mht-cet (pcm)", "mht-cet 2026 (pcm",
-    "pcm scorecard", "pcm result", "pcm score card",
-    "attempt 1 pcm", "pcm first attempt",
-]
 
 
 def _load_state() -> dict:
@@ -95,7 +113,7 @@ def _safe_head(url: str, timeout: int = 8) -> requests.Response | None:
 # ── Check 1: cetcell.mahacet.org result/API pages ────────────────────────────
 
 def _check_cetcell_result_pages(state: dict) -> dict:
-    """Check CET Cell website for PCM result pages."""
+    """Check CET Cell website for SPECIFIC PCM result declaration phrases."""
     result = {
         "pcm_found": False,
         "new_pcm_content": False,
@@ -115,20 +133,20 @@ def _check_cetcell_result_pages(state: dict) -> dict:
         cur_hash = hashlib.md5(content).hexdigest()
         new_hashes[url] = cur_hash
 
-        # Check for PCM keywords
-        found_kws = [kw for kw in PCM_RESULT_KEYWORDS if kw in text]
-        if found_kws:
+        # Only match SPECIFIC result-declaration phrases — not generic 'pcm'
+        found_phrases = [p for p in PCM_RESULT_DECLARED_PHRASES if p in text]
+        if found_phrases:
             result["pcm_found"] = True
             result["details"].append({
                 "url": url,
-                "keywords": found_kws,
+                "phrases": found_phrases,
                 "status": resp.status_code,
             })
 
         # Check if page changed since last run
         if url in prev_hashes and prev_hashes[url] != cur_hash:
             result["changed_urls"].append(url)
-            result["new_pcm_content"] = result["new_pcm_content"] or bool(found_kws)
+            result["new_pcm_content"] = result["new_pcm_content"] or bool(found_phrases)
 
     state["cetcell_hashes"] = new_hashes
     return result
@@ -137,7 +155,10 @@ def _check_cetcell_result_pages(state: dict) -> dict:
 # ── Check 2: scorecard.mhexam.com PCM endpoint ───────────────────────────────
 
 def _check_mhexam_pcm(state: dict) -> dict:
-    """Try PCM scorecard endpoint patterns on mhexam.com."""
+    """
+    Try PCM scorecard endpoint patterns on mhexam.com.
+    MUST verify real scorecard content in response body — not just HTTP 200.
+    """
     result = {
         "pcm_endpoint_live": False,
         "live_url": None,
@@ -147,27 +168,38 @@ def _check_mhexam_pcm(state: dict) -> dict:
     new_status  = {}
 
     for url in MHEXAM_PCM_PATTERNS:
-        resp = _safe_head(url)
+        resp = _safe_get(url, timeout=10)  # GET, not HEAD
         if not resp:
             new_status[url] = "error"
             continue
 
         status = resp.status_code
+        body   = resp.text.lower()
         new_status[url] = status
 
-        # If URL returns 200 or 301/302 (redirect to S3) → PCM is live!
-        if status in (200, 301, 302, 307, 308):
+        # Verify real scorecard content in body (prevents generic 200 false positives)
+        has_real_content = any(kw in body for kw in MHEXAM_REAL_CONTENT)
+
+        # Check if redirected to S3 (definitive proof)
+        redirected_to_s3 = (
+            "s3.amazonaws.com" in resp.url or
+            "s3.ap-south-1" in resp.url or
+            any("s3" in str(r.url) for r in resp.history)
+        )
+
+        if (status in (200, 301, 302, 307, 308)) and (has_real_content or redirected_to_s3):
             result["pcm_endpoint_live"] = True
             result["live_url"] = url
             result["details"].append({
                 "url": url,
                 "status": status,
-                "location": resp.headers.get("Location", ""),
+                "redirected_to": resp.url,
+                "has_real_content": has_real_content,
             })
 
-        # Also flag if status changed from 404 → anything else
+        # Only flag as changed if it WAS 404 and now has real content
         prev = prev_status.get(url)
-        if prev == 404 and status != 404:
+        if prev == 404 and status != 404 and has_real_content:
             result["pcm_endpoint_live"] = True
             result["live_url"] = url
 
@@ -260,37 +292,55 @@ def check_portal_changes() -> dict:
         # ── Aggregate significance ───────────────────────────────────────────
         summaries = []
 
-        # PCM found in cetcell pages
+        # PCM found in cetcell pages (only with specific declaration phrases)
         if cetcell["pcm_found"]:
             result["pcm_found_anywhere"] = True
             result["significant_change"] = True
-            summaries.append(f"PCM keywords found on cetcell.mahacet.org ({cetcell['details']})")
+            summaries.append(f"PCM result declared on cetcell: {cetcell['details']}")
 
-        # cetcell page changed
+        # cetcell page changed (log only, not alert-worthy alone)
         if cetcell["changed_urls"]:
             result["changed"] = True
-            summaries.append(f"cetcell pages changed: {cetcell['changed_urls'][:2]}")
+            summaries.append(f"cetcell pages updated: {cetcell['changed_urls'][:2]}")
 
-        # mhexam PCM endpoint live
+        # mhexam PCM endpoint live WITH real content
         if mhexam["pcm_endpoint_live"]:
             result["pcm_found_anywhere"] = True
             result["significant_change"] = True
-            summaries.append(f"PCM scorecard endpoint is LIVE: {mhexam['live_url']}")
+            summaries.append(f"PCM scorecard endpoint LIVE with content: {mhexam['live_url']}")
 
         # Portal JS bundle changed (new deploy)
         if bundle["bundle_changed"]:
             result["changed"] = True
             result["significant_change"] = True
-            summaries.append("Portal JS bundle changed — new backend deploy detected!")
+            summaries.append("Portal JS bundle changed — new backend deploy!")
 
         # Page size change
         result["size_delta"] = bundle["size_delta"]
         if bundle["size_delta"] > 800:
             result["changed"] = True
-            summaries.append(f"Portal page size changed by {bundle['size_delta']} bytes")
+            summaries.append(f"Portal page size +{bundle['size_delta']} bytes")
 
         result["change_summary"] = " | ".join(summaries) if summaries else "No changes"
         result["success"] = True
+
+        # ── Deduplication: don't re-alert on same signal ─────────────────────
+        alert_sent_for = state.get("alert_sent_for", [])
+        if result["pcm_found_anywhere"]:
+            if "pcm_found" in alert_sent_for:
+                result["pcm_found_anywhere"] = False  # already alerted — skip
+                result["change_summary"] += " (alert already sent — skipping duplicate)"
+            else:
+                alert_sent_for.append("pcm_found")
+                state["alert_sent_for"] = alert_sent_for
+
+        if result["significant_change"] and not result["pcm_found_anywhere"]:
+            sig_key = f"sig_{result['change_summary'][:40]}"
+            if sig_key in alert_sent_for:
+                result["significant_change"] = False  # already alerted
+            else:
+                alert_sent_for.append(sig_key)
+                state["alert_sent_for"] = alert_sent_for
 
         # Save updated state
         _save_state(state)
