@@ -14,6 +14,8 @@ build/
 
 # Session & runtime files
 session_state.json
+public_monitor_state.json
+portal_change_state.json
 *.log
 
 # Screenshots (large files, not needed in repo)
