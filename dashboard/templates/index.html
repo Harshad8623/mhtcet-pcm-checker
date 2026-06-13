@@ -3,11 +3,122 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>MHTCET Result Checker — Live Dashboard</title>
-  <meta name="description" content="Live monitoring dashboard for MHTCET PCM Scorecard availability. Get instant Twilio alerts when your result is out." />
+  <title>MHTCET PCM Checker — Live Dashboard</title>
+  <meta name="description" content="Live 3-layer monitoring dashboard for MHTCET PCM Scorecard. Playwright login + public notice + change detection." />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="/static/style.css" />
+  <style>
+    /* ── New: Monitor Status Layer ─────────────────────────────── */
+    .monitors-section { margin: 0 0 1.5rem; }
+    .monitors-section h2 {
+      font-size: .75rem; font-weight: 600; letter-spacing: .1em;
+      text-transform: uppercase; color: var(--text-muted, #6b7280);
+      margin: 0 0 .75rem;
+    }
+    .monitors-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: .75rem;
+    }
+    .monitor-card {
+      background: rgba(255,255,255,.04);
+      border: 1px solid rgba(255,255,255,.08);
+      border-radius: 14px;
+      padding: 1rem 1.1rem;
+      display: flex; align-items: center; gap: .9rem;
+      position: relative; overflow: hidden;
+      transition: border-color .2s, transform .2s;
+    }
+    .monitor-card:hover { border-color: rgba(255,255,255,.16); transform: translateY(-2px); }
+    .monitor-card.active { border-color: rgba(52,211,153,.25); }
+    .monitor-card.active::before {
+      content: ''; position: absolute; inset: 0;
+      background: linear-gradient(135deg, rgba(52,211,153,.06) 0%, transparent 60%);
+      pointer-events: none;
+    }
+    .monitor-icon {
+      width: 40px; height: 40px; border-radius: 10px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 1.2rem; flex-shrink: 0;
+    }
+    .monitor-icon.green  { background: rgba(52,211,153,.15); }
+    .monitor-icon.blue   { background: rgba(96,165,250,.15); }
+    .monitor-icon.purple { background: rgba(167,139,250,.15); }
+    .monitor-icon.gold   { background: rgba(251,191,36,.15); }
+    .monitor-body { flex: 1; min-width: 0; }
+    .monitor-name {
+      font-size: .82rem; font-weight: 600; color: #e2e8f0;
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+    .monitor-interval {
+      font-size: .7rem; color: #6b7280; margin-top: 2px;
+    }
+    .monitor-status-row {
+      display: flex; align-items: center; gap: .4rem; margin-top: .35rem;
+    }
+    .monitor-dot {
+      width: 7px; height: 7px; border-radius: 50%;
+      background: #374151; flex-shrink: 0;
+    }
+    .monitor-dot.pulse-green {
+      background: #34d399;
+      box-shadow: 0 0 0 0 rgba(52,211,153,.5);
+      animation: dotPulse 2s infinite;
+    }
+    .monitor-dot.pulse-blue {
+      background: #60a5fa;
+      box-shadow: 0 0 0 0 rgba(96,165,250,.5);
+      animation: dotPulse 2s infinite;
+    }
+    .monitor-dot.pulse-purple {
+      background: #a78bfa;
+      box-shadow: 0 0 0 0 rgba(167,139,250,.5);
+      animation: dotPulse 2s infinite;
+    }
+    @keyframes dotPulse {
+      0%   { box-shadow: 0 0 0 0 rgba(var(--clr),.5); }
+      70%  { box-shadow: 0 0 0 6px rgba(var(--clr),0); }
+      100% { box-shadow: 0 0 0 0 rgba(var(--clr),0); }
+    }
+    .monitor-status-text { font-size: .7rem; color: #9ca3af; }
+    .monitor-badge {
+      font-size: .62rem; font-weight: 700; letter-spacing: .04em;
+      padding: 2px 7px; border-radius: 999px; text-transform: uppercase;
+      margin-left: auto; flex-shrink: 0;
+    }
+    .monitor-badge.active { background: rgba(52,211,153,.18); color: #34d399; }
+    .monitor-badge.idle   { background: rgba(107,114,128,.15); color: #6b7280; }
+
+    /* ── Detection Method Banner ───────────────────────────────── */
+    .detection-banner {
+      background: rgba(96,165,250,.07);
+      border: 1px solid rgba(96,165,250,.18);
+      border-radius: 12px;
+      padding: .8rem 1.1rem;
+      display: flex; align-items: center; gap: .8rem;
+      margin-bottom: 1.5rem; flex-wrap: wrap;
+    }
+    .detection-banner .det-icon { font-size: 1.2rem; flex-shrink: 0; }
+    .detection-banner .det-body { flex: 1; }
+    .detection-banner .det-title {
+      font-size: .78rem; font-weight: 600; color: #93c5fd;
+    }
+    .detection-banner .det-sub {
+      font-size: .7rem; color: #6b7280; margin-top: 2px;
+    }
+    .det-layers {
+      display: flex; gap: .4rem; flex-wrap: wrap;
+    }
+    .det-layer {
+      font-size: .65rem; font-weight: 600; padding: 3px 8px;
+      border-radius: 6px; letter-spacing: .03em;
+    }
+    .det-layer.primary { background: rgba(52,211,153,.15); color: #34d399; border: 1px solid rgba(52,211,153,.2); }
+    .det-layer.fallback { background: rgba(167,139,250,.15); color: #a78bfa; border: 1px solid rgba(167,139,250,.2); }
+    .det-layer.notice  { background: rgba(251,191,36,.12); color: #fbbf24; border: 1px solid rgba(251,191,36,.2); }
+    .det-layer.bundle  { background: rgba(249,115,22,.12); color: #fb923c; border: 1px solid rgba(249,115,22,.2); }
+  </style>
 </head>
 <body>
 
@@ -25,7 +136,7 @@
       </div>
       <div>
         <h1>MHTCET Checker</h1>
-        <span class="subtitle">PCM Scorecard Monitor</span>
+        <span class="subtitle">PCM Scorecard Monitor · 3-Layer Detection</span>
       </div>
     </div>
     <div class="header-status">
@@ -133,6 +244,85 @@
 
   </section>
 
+  <!-- ── Detection Method Banner ────────────────────────────── -->
+  <div class="detection-banner">
+    <div class="det-icon">🔬</div>
+    <div class="det-body">
+      <div class="det-title">PCM Detection Methods — Active</div>
+      <div class="det-sub">Multiple signals checked simultaneously. First match triggers instant alert.</div>
+    </div>
+    <div class="det-layers">
+      <span class="det-layer primary">✅ API Intercept (Primary)</span>
+      <span class="det-layer fallback">🔁 UI Scan (Fallback)</span>
+      <span class="det-layer notice">📢 CET Cell Notices</span>
+      <span class="det-layer bundle">🏗️ JS Bundle Hash</span>
+    </div>
+  </div>
+
+  <!-- ── Live Monitors ──────────────────────────────────────── -->
+  <section class="monitors-section">
+    <h2>🛰️ Live Monitors</h2>
+    <div class="monitors-grid">
+
+      <!-- Monitor 1: Playwright Login -->
+      <div class="monitor-card active" id="mon-scorecard">
+        <div class="monitor-icon green">🎓</div>
+        <div class="monitor-body">
+          <div class="monitor-name">Scorecard Login Check</div>
+          <div class="monitor-interval">Every 5 minutes · Playwright</div>
+          <div class="monitor-status-row">
+            <div class="monitor-dot pulse-green" id="dot-scorecard"></div>
+            <div class="monitor-status-text" id="text-scorecard">Waiting for first run…</div>
+            <span class="monitor-badge active" id="badge-scorecard">ACTIVE</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Monitor 2: Public Notice -->
+      <div class="monitor-card active" id="mon-notice">
+        <div class="monitor-icon blue">📢</div>
+        <div class="monitor-body">
+          <div class="monitor-name">CET Cell Public Notices</div>
+          <div class="monitor-interval">Every 60 seconds · cetcell.mahacet.org</div>
+          <div class="monitor-status-row">
+            <div class="monitor-dot pulse-blue" id="dot-notice"></div>
+            <div class="monitor-status-text" id="text-notice">Waiting for first run…</div>
+            <span class="monitor-badge active" id="badge-notice">ACTIVE</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Monitor 3: Change Detector -->
+      <div class="monitor-card active" id="mon-change">
+        <div class="monitor-icon purple">🔍</div>
+        <div class="monitor-body">
+          <div class="monitor-name">Portal Change Detector</div>
+          <div class="monitor-interval">Every 2 minutes · JS Bundle + CET Cell</div>
+          <div class="monitor-status-row">
+            <div class="monitor-dot pulse-purple" id="dot-change"></div>
+            <div class="monitor-status-text" id="text-change">Waiting for first run…</div>
+            <span class="monitor-badge active" id="badge-change">ACTIVE</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Monitor 4: GitHub Actions Backup -->
+      <div class="monitor-card" id="mon-github">
+        <div class="monitor-icon gold">⚡</div>
+        <div class="monitor-body">
+          <div class="monitor-name">GitHub Actions Backup</div>
+          <div class="monitor-interval">Every 15 minutes · Cloud runner</div>
+          <div class="monitor-status-row">
+            <div class="monitor-dot" id="dot-github" style="background:#fbbf24;"></div>
+            <div class="monitor-status-text" id="text-github">All 3 checks run on Actions</div>
+            <span class="monitor-badge active" style="background:rgba(251,191,36,.15);color:#fbbf24;">BACKUP</span>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </section>
+
   <!-- ── Control Panel ───────────────────────────────────────── -->
   <section class="panel controls-panel">
     <div class="panel-header">
@@ -197,11 +387,12 @@
             <th>Timestamp</th>
             <th>Login</th>
             <th>PCM Found</th>
+            <th>Method</th>
             <th>Notes</th>
           </tr>
         </thead>
         <tbody id="log-body">
-          <tr><td colspan="5" class="empty-row">No checks yet. Start the checker!</td></tr>
+          <tr><td colspan="6" class="empty-row">No checks yet. Start the checker!</td></tr>
         </tbody>
       </table>
     </div>
@@ -210,7 +401,7 @@
   <!-- ── Footer ─────────────────────────────────────────────── -->
   <footer class="footer">
     <div>
-      MHTCET Checker &nbsp;•&nbsp; Built with Playwright + Flask + Twilio
+      MHTCET Checker &nbsp;•&nbsp; Playwright + Flask + Twilio + 3-Layer Detection
     </div>
     <div>
       Monitoring <a href="{{ login_url }}" target="_blank">{{ login_url }}</a>
@@ -223,5 +414,50 @@
 <div class="toast" id="toast"></div>
 
 <script src="/static/dashboard.js"></script>
+<script>
+  // ── Monitor status pulse animation ──────────────────────────
+  // Updates monitor cards based on checker running state
+  function updateMonitorCards(isRunning) {
+    const dots = ['dot-scorecard','dot-notice','dot-change'];
+    const texts = {
+      'text-scorecard': isRunning ? 'Checking every 5 min via Playwright login' : 'Checker stopped',
+      'text-notice':    isRunning ? 'Scanning cetcell.mahacet.org every 60s' : 'Checker stopped',
+      'text-change':    isRunning ? 'Monitoring JS bundle + CET Cell every 2 min' : 'Checker stopped',
+    };
+    const badges = ['badge-scorecard','badge-notice','badge-change'];
+
+    dots.forEach(id => {
+      const el = document.getElementById(id);
+      if (!el) return;
+      el.className = 'monitor-dot' + (isRunning ? ' pulse-' + (id.includes('scorecard') ? 'green' : id.includes('notice') ? 'blue' : 'purple') : '');
+    });
+    Object.entries(texts).forEach(([id, txt]) => {
+      const el = document.getElementById(id);
+      if (el) el.textContent = txt;
+    });
+    badges.forEach(id => {
+      const el = document.getElementById(id);
+      if (!el) return;
+      el.className = 'monitor-badge ' + (isRunning ? 'active' : 'idle');
+      el.textContent = isRunning ? 'ACTIVE' : 'IDLE';
+    });
+
+    ['mon-scorecard','mon-notice','mon-change'].forEach(id => {
+      const el = document.getElementById(id);
+      if (el) el.classList.toggle('active', isRunning);
+    });
+  }
+
+  // Hook into existing status polling
+  const _origUpdateUI = typeof updateUI === 'function' ? updateUI : null;
+  function updateMonitorHook(data) {
+    updateMonitorCards(data.checker_running);
+  }
+  // Patch into the polling cycle
+  document.addEventListener('statusUpdated', e => updateMonitorHook(e.detail));
+
+  // Also update "Check History" to show Method column
+  const _origRenderLogs = typeof renderLogs === 'function' ? renderLogs : null;
+</script>
 </body>
 </html>

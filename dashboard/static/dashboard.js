@@ -93,6 +93,9 @@ function updateDashboard(data) {
   } else {
     errorBanner.classList.add("hidden");
   }
+
+  // ── Fire event so monitor cards update ──
+  document.dispatchEvent(new CustomEvent('statusUpdated', { detail: data }));
 }
 
 // ── Countdown Timer ────────────────────────────────────────────
@@ -159,7 +162,7 @@ async function fetchLogs() {
 function renderLogs(logs) {
   const tbody = document.getElementById("log-body");
   if (!logs || logs.length === 0) {
-    tbody.innerHTML = `<tr><td colspan="5" class="empty-row">No checks yet. Start the checker!</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="6" class="empty-row">No checks yet. Start the checker!</td></tr>`;
     return;
   }
 
@@ -174,6 +177,11 @@ function renderLogs(logs) {
       ? `<span class="badge badge-yes">🎯 YES</span>`
       : `<span class="badge badge-no">—</span>`;
 
+    // Method column: show if detection was API-based or UI scan
+    const methodBadge = log.api_detected
+      ? `<span style="font-size:.7rem;background:rgba(52,211,153,.15);color:#34d399;padding:2px 6px;border-radius:5px;">API</span>`
+      : `<span style="font-size:.7rem;background:rgba(167,139,250,.12);color:#a78bfa;padding:2px 6px;border-radius:5px;">UI</span>`;
+
     const notes = log.error_message
       ? `<span style="color:#fca5a5;font-size:0.78rem;">${escapeHtml(log.error_message.substring(0,80))}</span>`
       : log.page_title
@@ -186,6 +194,7 @@ function renderLogs(logs) {
         <td style="font-family:'JetBrains Mono',monospace;font-size:0.78rem;">${log.timestamp}</td>
         <td>${loginBadge}</td>
         <td>${pcmBadge}</td>
+        <td>${methodBadge}</td>
         <td>${notes}</td>
       </tr>
     `;
