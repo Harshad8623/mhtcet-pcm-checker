@@ -291,7 +291,8 @@ def run_public_monitor():
 def run_change_detector():
     """
     Detect significant backend changes on portal-2026.maharashtracet.org.
-    Alerts via call + WhatsApp on significant changes (result upload signals).
+    Also checks cetcell result pages and mhexam.com PCM endpoints.
+    Alerts via call + WhatsApp on significant changes or PCM detection.
     """
     if not _detector_lock.acquire(blocking=False):
         return  # Already running
@@ -303,18 +304,42 @@ def run_change_detector():
             logger.warning(f"[CHANGE] Detector error: {result['error']}")
             return
 
+        # ── PCM directly found (mhexam endpoint live / cetcell has PCM) ──────
+        if result.get("pcm_found_anywhere"):
+            logger.warning(
+                f"[CHANGE] *** PCM RESULT DETECTED via change detector! "
+                f"Summary: {result['change_summary']} ***"
+            )
+            wa_msg = (
+                "🚨 *MHT-CET PCM RESULT DETECTED!* 🚨\n\n"
+                "PCM scorecard infrastructure is LIVE!\n\n"
+                f"Signal: {result['change_summary']}\n\n"
+                "👉 Login NOW:\n"
+                "https://portal-2026.maharashtracet.org\n\n"
+                "Click Score Card → Get Score Card (PCM) ⚡"
+            )
+            twiml = (
+                "<Response><Say voice='alice' language='en-IN'>"
+                "Alert! Alert! The MHT CET PCM result infrastructure is now live! "
+                "Your PCM scorecard is available. "
+                "Login to the portal immediately and download your scorecard NOW!"
+                "</Say></Response>"
+            )
+            _send_whatsapp_safe(wa_msg, "pcm_detected_change")
+            _make_call_with_twiml(twiml, "pcm_detected_call")
+            return
+
+        # ── Significant structural change (new deploy, bundle update) ────────
         if result["significant_change"]:
             logger.warning(
                 f"[CHANGE] *** SIGNIFICANT PORTAL CHANGE DETECTED! "
                 f"Summary: {result['change_summary']} | "
                 f"Size delta: {result['size_delta']} bytes ***"
             )
-
             wa_msg = (
                 "⚠️ *MHT-CET Portal Backend Change Detected!* ⚠️\n\n"
                 "The portal has changed significantly — results may be uploading!\n\n"
-                f"Change: {result['change_summary']}\n"
-                f"Size change: {result['size_delta']} bytes\n\n"
+                f"Change: {result['change_summary']}\n\n"
                 "👉 Check NOW:\n"
                 "https://portal-2026.maharashtracet.org\n\n"
                 "⚡ Login and check Score Card section immediately!"
