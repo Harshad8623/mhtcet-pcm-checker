@@ -43,23 +43,22 @@ CETCELL_RESULT_URLS = [
 ]
 
 # SPECIFIC phrases that indicate a PCM RESULT DECLARATION
-# NOT generic mentions of "pcm" as a course name
+# Must be UNIQUE to PCM — not present in any other CET result announcement
 PCM_RESULT_DECLARED_PHRASES = [
     "result declared for mht-cet (pcm",
     "result declared for mht-cet(pcm",
     "mht-cet (pcm) result declared",
     "mht-cet(pcm) result declared",
     "pcm result declared",
-    "pcm score card available",
-    "pcm scorecard available",
-    "score card available in candidate",   # + context "pcm" nearby
+    "pcm score card available in candidate",     # must include 'pcm' before it
+    "pcm scorecard available in candidate",
     "pcm group first attempt result",
     "pcm group second attempt result",
     "result summary:mht-cet 2026 (pcm",
     "result summary : mht-cet 2026 (pcm",
     "result summary:mht-cet(pcm",
-    "pcm 2026 result",
-    "mht-cet 2026 pcm result",
+    "mht-cet (pcm) 2026 (attempt 1) result",
+    "mht-cet (pcm group",
 ]
 
 # 2. scorecard.mhexam.com endpoint patterns for PCM
