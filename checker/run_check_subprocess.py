@@ -134,6 +134,36 @@ def run():
         )
         page = context.new_page()
 
+        # ── Network interception: capture portal API responses ───────────────
+        # The React portal makes XHR/fetch calls to get scorecard data.
+        # We intercept all JSON responses to:
+        #   1. Find the exact API endpoint for scorecard data
+        #   2. Read PCM availability directly from the API (most accurate)
+        captured_api = []   # list of {url, body} for scorecard-related calls
+        API_KEYWORDS = ["scorecard", "score-card", "result", "card", "exam"]
+        API_DISCOVERY_FILE = Path(__file__).parent.parent / "discovered_api_endpoints.json"
+
+        def on_response(response):
+            try:
+                url = response.url
+                ct  = response.headers.get("content-type", "")
+                if "json" not in ct:
+                    return
+                # Only capture likely scorecard/result API calls
+                url_low = url.lower()
+                if not any(kw in url_low for kw in API_KEYWORDS):
+                    return
+                try:
+                    body = response.json()
+                    captured_api.append({"url": url, "body": body})
+                    print(f"[API] Captured: {url}", file=sys.stderr)
+                except Exception:
+                    pass
+            except Exception:
+                pass
+
+        page.on("response", on_response)
+
         try:
             # ── STEP 1: Load portal ──────────────────────────────────────────
             print(f"[STEP1] Loading: {PORTAL_URL}", file=sys.stderr)
@@ -386,7 +416,7 @@ def run():
                 print("[STEP4] Clicking via JS to open popup...", file=sys.stderr)
                 try:
                     page.evaluate("(el) => el.click()", scorecard_btn)
-                    # Wait for modal content — 'Technical Education' only appears in popup
+                    # Wait for modal content
                     try:
                         page.wait_for_selector(
                             "text=Technical Education",
@@ -402,53 +432,97 @@ def run():
             else:
                 print("[STEP4] Score Card button not found — reading dashboard body.", file=sys.stderr)
 
+            # ── METHOD A: API-based PCM detection (most accurate) ────────────
+            # The React portal makes XHR/fetch API calls to get scorecard data.
+            # We intercept those JSON responses and read PCM status from raw data.
+            pcm_found      = False
+            pcm_api_source = None
 
-            # Read page/modal content safely
-            try:
-                body_text  = page.inner_text("body", timeout=8000)
-            except Exception:
-                body_text = ""
-            body_lower = body_text.lower()
-            print(f"[STEP4] Score card popup text (300): {body_lower[:300]}", file=sys.stderr)
-            save_screenshot(page, "step4_scorecard_popup")
+            PCM_API_PHRASES = [
+                "mht-cet (pcm", "mht-cet(pcm", "pcm group",
+                "mhtcet pcm", "pcm_group", "pcm-group",
+            ]
 
+            for api_call in captured_api:
+                api_str = json.dumps(api_call["body"]).lower()
+                if any(ph in api_str for ph in PCM_API_PHRASES):
+                    # Must also look like a scorecard/result entry, not a config value
+                    if any(w in api_str for w in ["scorecard", "score_card",
+                                                   "result", "attempt", "download"]):
+                        pcm_found      = True
+                        pcm_api_source = api_call["url"]
+                        print(f"[API-DETECT] PCM found in API response: {api_call['url']}",
+                              file=sys.stderr)
+                        break
 
-            # ── PCM detection: ONLY flag if PCM text explicitly present ──────
-            # PCB also has 'get score card' so we MUST check for PCM specifically
-            pcm_found = any(kw in body_lower for kw in PCM_KEYWORDS)
-
-            # Extra check: scan all visible text elements for PCM scorecard cards
-            if not pcm_found:
-                for sel in ["div", "li", "p", "span", "td", "h3", "h4"]:
-                    try:
-                        els = page.query_selector_all(sel)
-                        for el in els[:50]:
-                            try:
-                                txt = el.inner_text().strip().lower()
-                                # Must have 'pcm' AND something score-related
-                                # and must NOT be a PCB-only element
-                                if ("pcm" in txt and
-                                    any(w in txt for w in ["score", "result", "attempt"]) and
-                                    "pcb" not in txt):  # ignore PCB elements
-                                    pcm_found = True
-                                    print(f"[STEP4] PCM element: '{txt[:80]}'",
-                                          file=sys.stderr)
-                                    break
-                            except Exception:
-                                continue
-                        if pcm_found:
-                            break
-                    except Exception:
-                        continue
+            # Save discovered API endpoints to file for future direct monitoring
+            if captured_api:
+                try:
+                    existing = []
+                    if API_DISCOVERY_FILE.exists():
+                        existing = json.loads(API_DISCOVERY_FILE.read_text())
+                    known_urls = {e["url"] for e in existing}
+                    for call in captured_api:
+                        if call["url"] not in known_urls:
+                            existing.append({"url": call["url"],
+                                             "discovered_at": time.strftime("%Y-%m-%d %H:%M:%S")})
+                    API_DISCOVERY_FILE.write_text(json.dumps(existing, indent=2))
+                    print(f"[API-DETECT] Saved {len(captured_api)} endpoints to {API_DISCOVERY_FILE.name}",
+                          file=sys.stderr)
+                except Exception as e:
+                    print(f"[API-DETECT] Could not save endpoints: {e}", file=sys.stderr)
 
             if pcm_found:
-                result["pcm_found"] = True
+                result["pcm_found"]      = True
+                result["api_detected"]   = True
+                result["pcm_api_source"] = pcm_api_source
+                result["screenshot"]     = save_screenshot(page, "PCM_SCORECARD_AVAILABLE_API")
+                print("[ALERT] *** PCM found via API response! ***", file=sys.stderr)
+
+            # ── METHOD B: UI text scan (fallback if API not captured) ─────────
+            if not pcm_found:
+                try:
+                    body_text = page.inner_text("body", timeout=8000)
+                except Exception:
+                    body_text = ""
+                body_lower = body_text.lower()
+                print(f"[STEP4] Score card popup text (300): {body_lower[:300]}", file=sys.stderr)
+                save_screenshot(page, "step4_scorecard_popup")
+
+                # UI keyword scan — ONLY flag if PCM explicitly present
+                pcm_found = any(kw in body_lower for kw in PCM_KEYWORDS)
+
+                # Extra: scan visible elements for PCM scorecard cards
+                if not pcm_found:
+                    for sel in ["div", "li", "p", "span", "td", "h3", "h4"]:
+                        try:
+                            els = page.query_selector_all(sel)
+                            for el in els[:50]:
+                                try:
+                                    txt = el.inner_text().strip().lower()
+                                    if (("pcm" in txt) and
+                                        any(w in txt for w in ["score", "result", "attempt"]) and
+                                        "pcb" not in txt):
+                                        pcm_found = True
+                                        print(f"[STEP4] PCM element: '{txt[:80]}'", file=sys.stderr)
+                                        break
+                                except Exception:
+                                    continue
+                            if pcm_found:
+                                break
+                        except Exception:
+                            continue
+
+            if pcm_found:
+                result["pcm_found"]  = True
                 result["screenshot"] = save_screenshot(page, "PCM_SCORECARD_AVAILABLE")
                 print("[ALERT] *** PCM SCORECARD IS AVAILABLE! ***", file=sys.stderr)
             else:
                 result["screenshot"] = save_screenshot(page, "step4_no_pcm_yet")
-                print("[STEP4] PCM not available yet (only PCB shown). Waiting...",
-                      file=sys.stderr)
+                print("[STEP4] PCM not available yet. Waiting...", file=sys.stderr)
+                if not captured_api:
+                    print("[API-DETECT] No API calls captured — UI scan used as fallback.",
+                          file=sys.stderr)
 
             result["success"] = True
 
