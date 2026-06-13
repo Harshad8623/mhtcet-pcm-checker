@@ -35,6 +35,8 @@ SCORECARD_APIS = [
 ]
 
 # PCM-specific phrases in JSON response
+# BUG FIX #1: '"pcm"' was too generic — any JSON with key "pcm" would match
+# e.g. {"pcm": false} would fire a false alert. Removed it.
 PCM_JSON_PHRASES = [
     "mht-cet (pcm",
     "mht-cet(pcm",
@@ -42,7 +44,6 @@ PCM_JSON_PHRASES = [
     "mhtcet_pcm",
     "pcm_group",
     "pcm-group",
-    '"pcm"',
 ]
 
 # Phrases that confirm it's a scorecard/result (not a config value)
@@ -50,6 +51,10 @@ SCORECARD_CONFIRM = [
     "scorecard", "score_card", "score-card",
     "result", "attempt", "download", "available",
 ]
+
+# BUG FIX #2: Track session expiry separately so we don't loop through
+# all 9 URLs when the first 401 already tells us the session is dead.
+SESSION_EXPIRED_CODES = {401, 403}
 
 
 def _load_cookies() -> dict:
@@ -60,7 +65,9 @@ def _load_cookies() -> dict:
     if not SESSION_FILE.exists():
         return {}
     try:
-        data = json.loads(SESSION_FILE.read_text())
+        # BUG FIX #3: Must specify encoding='utf-8' — session file may contain
+        # Unicode chars (Thai, Devanagari) that fail with default cp1252 on Windows.
+        data = json.loads(SESSION_FILE.read_text(encoding="utf-8"))
         cookies = {}
         for c in data.get("cookies", []):
             domain = c.get("domain", "")
@@ -72,14 +79,14 @@ def _load_cookies() -> dict:
         return {}
 
 
-def _load_discovered_apis() -> list[str]:
+def _load_discovered_apis() -> list:
     """Load any API endpoints discovered by Playwright network interception."""
     discovery_file = Path(__file__).parent.parent / "discovered_api_endpoints.json"
     if not discovery_file.exists():
         return []
     try:
-        endpoints = json.loads(discovery_file.read_text())
-        return [e["url"] for e in endpoints]
+        endpoints = json.loads(discovery_file.read_text(encoding="utf-8"))
+        return [e["url"] for e in endpoints if isinstance(e, dict) and "url" in e]
     except Exception:
         return []
 
@@ -93,20 +100,22 @@ def check_api_direct() -> dict:
         "success": bool,
         "pcm_found": bool,
         "authenticated": bool,    # True if session cookies worked
+        "session_expired": bool,  # True if got 401/403
         "endpoint_hit": str|None, # which URL returned data
-        "raw_snippet": str,       # first 200 chars of response
+        "raw_snippet": str,       # first 300 chars of response
         "error": str|None,
         "checked_at": str,
       }
     """
     result = {
-        "success":      False,
-        "pcm_found":    False,
-        "authenticated": False,
-        "endpoint_hit": None,
-        "raw_snippet":  "",
-        "error":        None,
-        "checked_at":   datetime.utcnow().isoformat(),
+        "success":         False,
+        "pcm_found":       False,
+        "authenticated":   False,
+        "session_expired": False,
+        "endpoint_hit":    None,
+        "raw_snippet":     "",
+        "error":           None,
+        "checked_at":      datetime.utcnow().isoformat(),
     }
 
     cookies = _load_cookies()
@@ -137,18 +146,31 @@ def check_api_direct() -> dict:
                 timeout=8, allow_redirects=True
             )
 
-            if resp.status_code == 401 or resp.status_code == 403:
-                # Session expired — need fresh Playwright login
-                logger.debug(f"[API-DIRECT] {url} → {resp.status_code} (session expired)")
-                continue
+            # BUG FIX #4: Stop looping on 401/403 — session is expired for ALL urls.
+            # No point trying the other 8 endpoints with a dead session.
+            if resp.status_code in SESSION_EXPIRED_CODES:
+                result["session_expired"] = True
+                result["error"] = f"Session expired (HTTP {resp.status_code}) — needs fresh Playwright login"
+                logger.info(f"[API-DIRECT] Session expired ({resp.status_code}). Will refresh on next Playwright run.")
+                return result
 
             if resp.status_code == 404:
                 logger.debug(f"[API-DIRECT] {url} → 404")
                 continue
 
-            # Got a response — check if it's JSON with data
-            ct = resp.headers.get("content-type", "")
+            # BUG FIX #5: Also skip non-200 codes (500, 502, etc.) — don't
+            # treat server errors as "authenticated but empty".
+            if resp.status_code >= 400:
+                logger.debug(f"[API-DIRECT] {url} → {resp.status_code} (skipping)")
+                continue
+
             body_raw = resp.text.strip()
+
+            # BUG FIX #6: Check for HTML response — the white page IS HTML,
+            # not JSON. If the response looks like HTML, skip it (not authenticated).
+            if body_raw.startswith("<!") or body_raw.lower().startswith("<html"):
+                logger.debug(f"[API-DIRECT] {url} → HTML response (not authenticated)")
+                continue
 
             if not body_raw or body_raw in ("{}", "[]", "null"):
                 logger.debug(f"[API-DIRECT] {url} → empty body")
@@ -186,6 +208,6 @@ def check_api_direct() -> dict:
             logger.debug(f"[API-DIRECT] {url} → error: {e}")
 
     if not result["success"] and not result["error"]:
-        result["error"] = "No API endpoint returned usable data (session may need refresh)"
+        result["error"] = "No API endpoint returned usable JSON data (session may need refresh)"
 
     return result

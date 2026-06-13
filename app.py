@@ -200,18 +200,19 @@ def run_check():
             return
 
         # ── Handle portal changed ─────────────────────────────────────────
+        # BUG FIX #7: Do NOT stop the whole scheduler on portal_changed.
+        # portal_changed just means the UI layout may have shifted — not a
+        # result declaration. Keep running so we still catch the real result.
         if portal_changed:
-            logger.warning("Portal UI changed!")
+            logger.warning("[CHECK] Portal UI changed — layout may have shifted. Continuing checks.")
             log_check(
                 login_status=login_status,
                 pcm_found=False,
-                error_message=error_msg,
+                error_message="Portal UI changed (layout shift)",
                 screenshot_path=screenshot
             )
-            _send_whatsapp_safe(MSG_PORTAL_CHANGED, "whatsapp_error")
-            update_status(checker_running=False)
-            scheduler.pause()
-            return
+            _send_whatsapp_safe(MSG_PORTAL_CHANGED, "whatsapp_info")
+            # DO NOT pause scheduler or stop checker here
 
         # ── React to final result ─────────────────────────────────────────
         pcm_found = result.get("pcm_found", False)
@@ -240,9 +241,6 @@ def run_check():
 
 
 # ── Public Notice Monitor ─────────────────────────────────────────────────────
-_monitor_lock  = threading.Lock()
-_detector_lock = threading.Lock()
-
 
 def run_public_monitor():
     """
@@ -620,6 +618,11 @@ def run_api_direct_check():
             return
 
         result = check_api_direct()
+
+        # Session expired — skip silently, Playwright will refresh it
+        if result.get("session_expired"):
+            logger.info("[API-DIRECT] Session expired — waiting for Playwright to refresh.")
+            return
 
         if not result["authenticated"]:
             logger.debug(f"[API-DIRECT] Not authenticated yet: {result['error']}")
