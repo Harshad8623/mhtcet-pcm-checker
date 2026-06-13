@@ -116,25 +116,37 @@ def run_check():
                 [sys.executable, SUBPROCESS_CHECKER],
                 capture_output=True,
                 text=True,
-                timeout=120,   # Max 2 min per check
+                timeout=180,   # 3 min — Railway containers can be slow
                 cwd=os.path.dirname(__file__)
             )
             stdout = proc.stdout.strip()
             stderr = proc.stderr.strip()
 
+            # Always log stderr so Railway logs show the real error
             if stderr:
-                # Filter out routine warnings
-                real_errors = [l for l in stderr.splitlines()
-                               if "DeprecationWarning" not in l
-                               and "RequestsDependencyWarning" not in l
-                               and l.strip()]
-                if real_errors:
-                    logger.warning(f"[SUBPROCESS STDERR] {chr(10).join(real_errors[:5])}")
+                for line in stderr.splitlines():
+                    if line.strip():
+                        logger.warning(f"[SUBPROCESS] {line}")
 
             if not stdout:
-                raise ValueError("Subprocess returned no output. Check SUBPROCESS_CHECKER path.")
+                err_detail = stderr[-500:] if stderr else "no stderr either"
+                raise ValueError(
+                    f"Subprocess returned no output (exit={proc.returncode}). "
+                    f"Last stderr: {err_detail}"
+                )
 
-            result = json.loads(stdout)
+            # Parse JSON — use last line in case there's extra output
+            result = None
+            for line in reversed(stdout.splitlines()):
+                line = line.strip()
+                if line.startswith("{"):
+                    try:
+                        result = json.loads(line)
+                        break
+                    except json.JSONDecodeError:
+                        continue
+            if result is None:
+                raise ValueError(f"Could not parse JSON from subprocess output: {stdout[:300]}")
 
         except subprocess.TimeoutExpired:
             result = {

@@ -96,15 +96,24 @@ def run():
     }
 
     with sync_playwright() as pw:
-        browser = pw.chromium.launch(
-            headless=True,
-            args=[
-                "--no-sandbox",
-                "--disable-setuid-sandbox",
-                "--disable-dev-shm-usage",
-                "--disable-blink-features=AutomationControlled",
-            ]
-        )
+        try:
+            browser = pw.chromium.launch(
+                headless=True,
+                args=[
+                    "--no-sandbox",
+                    "--disable-setuid-sandbox",
+                    "--disable-dev-shm-usage",
+                    "--disable-gpu",
+                    "--single-process",
+                    "--disable-blink-features=AutomationControlled",
+                ]
+            )
+        except Exception as launch_err:
+            result["error"] = f"Chromium launch failed: {launch_err}"
+            result["login_status"] = "error"
+            sys.stdout.write(json.dumps(result) + "\n")
+            sys.stdout.flush()
+            return
 
         ctx_args = dict(
             user_agent=(
@@ -474,8 +483,26 @@ def run():
             except Exception:
                 pass
 
-    print(json.dumps(result))
+    # Always print JSON — even if something unexpected happened above
+    sys.stdout.write(json.dumps(result) + "\n")
+    sys.stdout.flush()
 
 
 if __name__ == "__main__":
-    run()
+    try:
+        run()
+    except Exception as fatal:
+        # Last-resort: if run() itself crashes, still output valid JSON
+        import traceback
+        err_result = {
+            "success": False,
+            "login_status": "error",
+            "pcm_found": False,
+            "error": f"Fatal error: {str(fatal)}",
+            "screenshot": None,
+            "portal_changed": False,
+            "page_title": ""
+        }
+        print(traceback.format_exc(), file=sys.stderr)
+        sys.stdout.write(json.dumps(err_result) + "\n")
+        sys.stdout.flush()
