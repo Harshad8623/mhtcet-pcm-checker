@@ -40,6 +40,7 @@ from notifications.whatsapp import (
 )
 from checker.public_monitor import check_public_notices
 from checker.change_detector import check_portal_changes
+from checker.api_direct_checker import check_api_direct
 
 # Path to the subprocess checker script
 SUBPROCESS_CHECKER = os.path.join(os.path.dirname(__file__), "checker", "run_check_subprocess.py")
@@ -80,7 +81,10 @@ app.secret_key = os.getenv("FLASK_SECRET_KEY", "mhtcet-secret-2026")
 
 # ── Scheduler ─────────────────────────────────────────────────────────────────
 scheduler = BackgroundScheduler(timezone="Asia/Kolkata")
-_check_lock = threading.Lock()
+_check_lock   = threading.Lock()
+_monitor_lock = threading.Lock()
+_detector_lock = threading.Lock()
+_api_lock      = threading.Lock()
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -597,6 +601,46 @@ def api_run_now():
 #  STARTUP
 # ══════════════════════════════════════════════════════════════════════════════
 
+def run_api_direct_check():
+    """
+    Job 4: Fastest + most accurate check.
+    Calls portal-2026.maharashtracet.org/api/scorecards directly using
+    saved Playwright session cookies — no browser needed.
+    Runs every 90 seconds after first Playwright login.
+    """
+    if not _api_lock.acquire(blocking=False):
+        logger.debug("[API-DIRECT] Previous check still running, skipping.")
+        return
+    try:
+        status = get_status()
+        if not status.checker_running:
+            return
+        if status.alert_sent:
+            logger.debug("[API-DIRECT] Alert already sent, skipping.")
+            return
+
+        result = check_api_direct()
+
+        if not result["authenticated"]:
+            logger.debug(f"[API-DIRECT] Not authenticated yet: {result['error']}")
+            return
+
+        logger.info(
+            f"[API-DIRECT] endpoint={result['endpoint_hit']} | "
+            f"PCM={result['pcm_found']} | "
+            f"snippet={result['raw_snippet'][:60]}"
+        )
+
+        if result["pcm_found"]:
+            logger.warning("[API-DIRECT] *** PCM FOUND via direct API! ALERTING NOW! ***")
+            _fire_alerts()
+
+    except Exception as e:
+        logger.exception(f"[API-DIRECT] Unexpected error: {e}")
+    finally:
+        _api_lock.release()
+
+
 def _start_scheduler():
     # ── Job 1: Portal login + scorecard checker (every 5 min) ────────────────
     scheduler.add_job(
@@ -624,6 +668,18 @@ def _start_scheduler():
         trigger=IntervalTrigger(seconds=120, timezone="Asia/Kolkata"),
         id="portal_change_detector",
         name="Portal Backend Change Detector",
+        replace_existing=True,
+        misfire_grace_time=30
+    )
+
+    # ── Job 4: Direct API check using session cookies (every 90 seconds) ─────
+    # Fastest + most accurate — calls /api/scorecards directly, no browser.
+    # Only useful after first Playwright login saves session_state.json.
+    scheduler.add_job(
+        func=run_api_direct_check,
+        trigger=IntervalTrigger(seconds=90, timezone="Asia/Kolkata"),
+        id="api_direct_check",
+        name="Direct API Scorecard Check",
         replace_existing=True,
         misfire_grace_time=30
     )
