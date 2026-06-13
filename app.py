@@ -524,10 +524,23 @@ def api_start():
         return jsonify({"ok": False, "msg": "Alert already sent! Reset first."})
 
     update_status(checker_running=True)
-    if scheduler.state == 2:  # paused
+
+    # BUG FIX G: _fire_alerts() pauses only the mhtcet_check job, not the whole
+    # scheduler. So scheduler.state is still RUNNING (1), and the resume() below
+    # never fires. Must explicitly resume the individual paused job.
+    if scheduler.state == 2:       # whole scheduler paused
         scheduler.resume()
-    elif scheduler.state == 0:  # stopped
+    elif scheduler.state == 0:     # scheduler not started yet
         _start_scheduler()
+    else:
+        # Scheduler is running — just resume the specific job if it was paused
+        try:
+            job = scheduler.get_job("mhtcet_check")
+            if job and job.next_run_time is None:
+                job.resume()
+                logger.info("[START] mhtcet_check job resumed.")
+        except Exception as ex:
+            logger.warning(f"[START] Could not resume job: {ex}")
 
     logger.info("[START] Checker STARTED via dashboard.")
     _send_whatsapp_safe(MSG_CHECKER_STARTED, "whatsapp_info")

@@ -42,14 +42,16 @@ PCM_KEYWORDS = [
 def _load_state() -> dict:
     if STATE_FILE.exists():
         try:
-            return json.loads(STATE_FILE.read_text())
+            # BUG FIX E: specify utf-8 to avoid Windows cp1252 decode error
+            return json.loads(STATE_FILE.read_text(encoding="utf-8"))
         except Exception:
             pass
     return {}
 
 
 def _save_state(state: dict):
-    STATE_FILE.write_text(json.dumps(state, indent=2))
+    # BUG FIX E (cont): consistent utf-8 on write
+    STATE_FILE.write_text(json.dumps(state, indent=2), encoding="utf-8")
 
 
 def _extract_announcements(html: str) -> list[str]:
@@ -127,10 +129,16 @@ def check_public_notices() -> dict:
         current_has_pcm = bool(found_kws)
         result["new_pcm_notice"] = current_has_pcm and not prev_had_pcm
 
+        # BUG FIX F: known_notices was already 130KB and growing forever.
+        # Cap at 500 most recent entries to keep state file small.
+        notices_to_save = list(current_notices)
+        if len(notices_to_save) > 500:
+            notices_to_save = notices_to_save[-500:]
+
         # Save updated state
         _save_state({
             "page_hash":     page_hash,
-            "known_notices": list(current_notices),
+            "known_notices": notices_to_save,
             "had_pcm":       current_has_pcm,
             "last_checked":  result["checked_at"],
         })

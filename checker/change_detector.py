@@ -73,14 +73,16 @@ PORTAL_JS_URL = "https://portal-2026.maharashtracet.org/"
 def _load_state() -> dict:
     if STATE_FILE.exists():
         try:
-            return json.loads(STATE_FILE.read_text())
+            # BUG FIX A: must specify encoding to avoid cp1252 crash on Windows
+            return json.loads(STATE_FILE.read_text(encoding="utf-8"))
         except Exception:
             pass
     return {}
 
 
 def _save_state(state: dict):
-    STATE_FILE.write_text(json.dumps(state, indent=2))
+    # BUG FIX A (cont): consistent utf-8 encoding on write
+    STATE_FILE.write_text(json.dumps(state, indent=2), encoding="utf-8")
 
 
 def _safe_get(url: str, timeout: int = 10) -> requests.Response | None:
@@ -237,11 +239,8 @@ def check_portal_changes() -> dict:
             result["changed"] = True
             summaries.append(f"cetcell pages updated: {cetcell['changed_urls'][:2]}")
 
-        # mhexam PCM endpoint live WITH real content
-        if mhexam["pcm_endpoint_live"]:
-            result["pcm_found_anywhere"] = True
-            result["significant_change"] = True
-            summaries.append(f"PCM scorecard endpoint LIVE with content: {mhexam['live_url']}")
+        # BUG FIX B: mhexam variable was referenced here but mhexam check was
+        # removed (token required). Removed the mhexam block entirely.
 
         # Portal JS bundle changed (new deploy)
         if bundle["bundle_changed"]:
@@ -249,17 +248,24 @@ def check_portal_changes() -> dict:
             result["significant_change"] = True
             summaries.append("Portal JS bundle changed — new backend deploy!")
 
-        # Page size change
+        # BUG FIX C: size_delta alone is NOT significant — CDN / gzip variation
+        # causes constant ±800 byte noise. Only log it, never alert on it alone.
         result["size_delta"] = bundle["size_delta"]
         if bundle["size_delta"] > 800:
             result["changed"] = True
-            summaries.append(f"Portal page size +{bundle['size_delta']} bytes")
+            summaries.append(f"Portal page size delta: {bundle['size_delta']} bytes (informational)")
 
         result["change_summary"] = " | ".join(summaries) if summaries else "No changes"
         result["success"] = True
 
         # ── Deduplication: don't re-alert on same signal ─────────────────────
         alert_sent_for = state.get("alert_sent_for", [])
+
+        # BUG FIX D: alert_sent_for list grows forever in state file.
+        # Cap it at 50 most-recent entries.
+        if len(alert_sent_for) > 50:
+            alert_sent_for = alert_sent_for[-50:]
+
         if result["pcm_found_anywhere"]:
             if "pcm_found" in alert_sent_for:
                 result["pcm_found_anywhere"] = False  # already alerted — skip
