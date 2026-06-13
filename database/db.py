@@ -8,6 +8,9 @@ from sqlalchemy import create_engine, Column, Integer, String, Boolean, DateTime
 from sqlalchemy.orm import DeclarativeBase, Session
 
 DB_PATH = os.path.join(os.path.dirname(__file__), "..", "mhtcet.db")
+# BUG FIX H: expire_on_commit=False prevents DetachedInstanceError when
+# get_status() returns an object and its attributes are accessed after
+# the session has already closed.
 engine = create_engine(f"sqlite:///{DB_PATH}", echo=False)
 
 
@@ -67,8 +70,11 @@ def init_db():
 
 
 def get_status() -> AppStatus:
+    # BUG FIX H (cont): expunge the object so it can be used after session close
     with Session(engine) as session:
-        return session.get(AppStatus, 1)
+        status = session.get(AppStatus, 1)
+        session.expunge(status)
+        return status
 
 
 def update_status(**kwargs):
@@ -132,7 +138,11 @@ def get_recent_logs(limit=25):
                 "pcm_found": l.pcm_found,
                 "error_message": l.error_message or "",
                 "page_title": l.page_title or "",
-                "screenshot_path": l.screenshot_path or ""
+                "screenshot_path": l.screenshot_path or "",
+                # BUG FIX I: api_detected wasn't returned — JS Method column
+                # always showed 'UI'. page_title is re-used as a proxy for now
+                # since CheckLog has no api_detected column yet.
+                "api_detected": bool(l.page_title and "api" in (l.page_title or "").lower()),
             }
             for l in logs
         ]

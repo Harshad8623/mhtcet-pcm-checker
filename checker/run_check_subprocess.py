@@ -26,14 +26,15 @@ PORTAL_URL = "https://portal-2026.maharashtracet.org/"
 SCREENSHOTS_DIR = Path(__file__).parent.parent / "screenshots"
 SESSION_FILE    = Path(__file__).parent.parent / "session_state.json"
 
-# PCM scorecard keywords — ONLY match when PCM text is explicitly present
+# PCM scorecard keywords — ONLY match when PCM text is EXPLICITLY present
 # DO NOT include 'get score card' alone — PCB also has that button!
+# BUG FIX 1: Removed raw 'PCM' and 'PCB' — they are 3-char substrings
+# that appear inside many unrelated words (e.g. 'topically', 'pcb circuit').
+# Only use full, unambiguous phrases.
 PCM_KEYWORDS = [
-    "mht-cet (pcm)",       # exact card label when PCM is released
+    "mht-cet (pcm)",           # exact card label when PCM is released
     "mht cet (pcm)",
     "mhtcet (pcm)",
-    "PCM",
-    "PCB",
     "MHT-CET (PCM) 2026",
     "MHT-CET (PCM) 2026 (Attempt 1)",
     "pcm scorecard",
@@ -185,12 +186,14 @@ def run():
             body = page.inner_text("body").lower()
             print(f"[STEP1] Page text (150): {body[:150]}", file=sys.stderr)
 
-            # ── Session error detection — auto-clear bad sessions ────────────
+            # BUG FIX 2: Original had broken operator precedence:
+            # 'try again' OR 'sign in' not in body OR ...
+            # All conditions need explicit parentheses.
             session_error = (
                 "something went wrong" in body or
                 "please try login again" in body or
                 "session expired" in body or
-                "try again" in body and "sign in" not in body and "registered email" not in body
+                ("try again" in body and "sign in" not in body and "registered email" not in body)
             )
             if session_error and SESSION_FILE.exists():
                 print("[STEP1] Bad/expired session detected — clearing and retrying...", file=sys.stderr)
@@ -460,13 +463,17 @@ def run():
                 try:
                     existing = []
                     if API_DISCOVERY_FILE.exists():
-                        existing = json.loads(API_DISCOVERY_FILE.read_text())
-                    known_urls = {e["url"] for e in existing}
+                        # BUG FIX 3: specify encoding — avoids cp1252 crash on Windows
+                        existing = json.loads(API_DISCOVERY_FILE.read_text(encoding="utf-8"))
+                        if not isinstance(existing, list):
+                            existing = []
+                    known_urls = {e["url"] for e in existing if isinstance(e, dict)}
                     for call in captured_api:
                         if call["url"] not in known_urls:
                             existing.append({"url": call["url"],
                                              "discovered_at": time.strftime("%Y-%m-%d %H:%M:%S")})
-                    API_DISCOVERY_FILE.write_text(json.dumps(existing, indent=2))
+                    # BUG FIX 4: specify encoding on write
+                    API_DISCOVERY_FILE.write_text(json.dumps(existing, indent=2), encoding="utf-8")
                     print(f"[API-DETECT] Saved {len(captured_api)} endpoints to {API_DISCOVERY_FILE.name}",
                           file=sys.stderr)
                 except Exception as e:
@@ -500,9 +507,11 @@ def run():
                             for el in els[:50]:
                                 try:
                                     txt = el.inner_text().strip().lower()
-                                    if (("pcm" in txt) and
-                                        any(w in txt for w in ["score", "result", "attempt"]) and
-                                        "pcb" not in txt):
+                                    # BUG FIX 5: Don't exclude elements containing 'pcb'.
+                                    # A real dashboard shows BOTH PCM and PCB cards.
+                                    # We only want: txt has 'pcm' + scorecard context.
+                                    if ("pcm" in txt and
+                                        any(w in txt for w in ["score", "result", "attempt"])):
                                         pcm_found = True
                                         print(f"[STEP4] PCM element: '{txt[:80]}'", file=sys.stderr)
                                         break
