@@ -30,11 +30,11 @@ MSG_LOGIN_FAILED = (
 )
 
 MSG_PORTAL_CHANGED = (
-    "🔴 *MHTCET Checker — Portal UI Changed*\n\n"
-    "⚠️ The portal layout has changed and the checker cannot find expected elements.\n\n"
+    "🟡 *MHTCET Checker — Portal UI Changed*\n\n"
+    "⚠️ The portal layout has shifted slightly (common before result uploads).\n\n"
     "📸 A screenshot has been saved to the `screenshots/` folder.\n"
-    "🛠️ Manual inspection is required to update the selectors.\n\n"
-    "_Checker has paused. Please check and restart._"
+    "🔍 The checker is still running and monitoring automatically.\n\n"
+    "_No action needed — you will be alerted when PCM result is found._"
 )
 
 MSG_WEBSITE_DOWN = (

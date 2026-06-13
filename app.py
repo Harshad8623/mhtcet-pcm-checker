@@ -213,6 +213,8 @@ def run_check():
             )
             _send_whatsapp_safe(MSG_PORTAL_CHANGED, "whatsapp_info")
             # DO NOT pause scheduler or stop checker here
+            # BUG FIX FINAL: return here to avoid double log_check below
+            return
 
         # ── React to final result ─────────────────────────────────────────
         pcm_found = result.get("pcm_found", False)
