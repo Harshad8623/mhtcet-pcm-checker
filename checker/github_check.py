@@ -1,7 +1,11 @@
 """
 checker/github_check.py
 Standalone PCM checker for GitHub Actions.
-Runs the Playwright check and sends Twilio alerts if PCM scorecard is found.
+Runs ALL 3 checks:
+  1. Playwright scorecard check (login + Score Card popup)
+  2. cetcell.mahacet.org public notice monitor
+  3. Portal change detector (mhexam.com + JS bundle)
+Sends Twilio alerts if PCM scorecard is found by ANY check.
 """
 import subprocess
 import sys
@@ -10,28 +14,55 @@ import os
 import time
 from pathlib import Path
 
-# ── Run the Playwright checker ──────────────────────────────────────────────
+ROOT = Path(__file__).parent.parent
+
+# ── Helper: send alerts ───────────────────────────────────────────────────────
+def send_alerts(wa_body: str, twiml: str):
+    from twilio.rest import Client
+    sid      = os.environ["TWILIO_ACCOUNT_SID"]
+    token    = os.environ["TWILIO_AUTH_TOKEN"]
+    from_num = os.environ["TWILIO_PHONE_NUMBER"]
+    to_num   = os.environ["YOUR_PHONE_NUMBER"]
+    wa_from  = os.environ.get("TWILIO_WHATSAPP_NUMBER", "+14155238886")
+
+    client = Client(sid, token)
+    try:
+        call = client.calls.create(twiml=twiml, to=to_num, from_=from_num)
+        print(f"[OK] Call sent! SID: {call.sid} -> {to_num}")
+    except Exception as e:
+        print(f"[ERROR] Call failed: {e}")
+
+    try:
+        msg = client.messages.create(
+            body=wa_body, from_=f"whatsapp:{wa_from}", to=f"whatsapp:{to_num}"
+        )
+        print(f"[OK] WhatsApp sent! SID: {msg.sid} -> {to_num}")
+    except Exception as e:
+        print(f"[ERROR] WhatsApp failed: {e}")
+
+
 print("=" * 60)
 print(f"[CHECK] MHT-CET PCM Checker — GitHub Actions")
-print(f"[CHECK] Starting check at {time.strftime('%Y-%m-%d %H:%M:%S')} UTC")
+print(f"[CHECK] Starting at {time.strftime('%Y-%m-%d %H:%M:%S')} UTC")
 print("=" * 60)
 
+pcm_found_by = None  # which check found PCM
+
+# ══════════════════════════════════════════════════════════════════════════════
+# CHECK 1: Playwright scorecard (login + Score Card popup)
+# ══════════════════════════════════════════════════════════════════════════════
+print("\n[1/3] Running Playwright scorecard check...")
 script = Path(__file__).parent / "run_check_subprocess.py"
 
 proc = subprocess.run(
     [sys.executable, str(script)],
-    capture_output=True,
-    text=True,
-    timeout=300,
-    cwd=Path(__file__).parent.parent
+    capture_output=True, text=True, timeout=300, cwd=ROOT
 )
 
-# Print stderr logs for visibility in GitHub Actions log
 if proc.stderr:
     for line in proc.stderr.strip().splitlines():
         print(f"  {line}")
 
-# Parse JSON result from stdout
 result_json = None
 for line in reversed(proc.stdout.strip().splitlines()):
     line = line.strip()
@@ -43,44 +74,53 @@ for line in reversed(proc.stdout.strip().splitlines()):
             continue
 
 if not result_json:
-    print("[ERROR] Could not parse result JSON. Raw stdout:")
+    print("[ERROR] Could not parse scorecard result JSON.")
     print(proc.stdout[-500:])
-    sys.exit(1)
+else:
+    print(f"[1/3] Login: {result_json.get('login_status')} | PCM: {result_json.get('pcm_found')}")
+    if result_json.get("pcm_found"):
+        pcm_found_by = "Playwright scorecard check"
 
-print(f"\n[RESULT] {json.dumps(result_json, indent=2)}")
+# ══════════════════════════════════════════════════════════════════════════════
+# CHECK 2: Public notice monitor (cetcell.mahacet.org)
+# ══════════════════════════════════════════════════════════════════════════════
+print("\n[2/3] Running public notice monitor...")
+try:
+    sys.path.insert(0, str(ROOT))
+    from checker.public_monitor import check_public_notices
+    r2 = check_public_notices()
+    print(f"[2/3] Success: {r2['success']} | New PCM notice: {r2['new_pcm_notice']} | Keywords: {r2['pcm_keywords_found']}")
+    if r2.get("new_pcm_notice"):
+        pcm_found_by = pcm_found_by or f"Public notice: {r2['pcm_keywords_found']}"
+except Exception as e:
+    print(f"[2/3] ERROR: {e}")
 
-login_status = result_json.get("login_status", "error")
-pcm_found    = result_json.get("pcm_found", False)
-error        = result_json.get("error")
+# ══════════════════════════════════════════════════════════════════════════════
+# CHECK 3: Portal change detector
+# ══════════════════════════════════════════════════════════════════════════════
+print("\n[3/3] Running portal change detector...")
+try:
+    from checker.change_detector import check_portal_changes
+    r3 = check_portal_changes()
+    print(f"[3/3] Success: {r3['success']} | PCM found: {r3['pcm_found_anywhere']} | Summary: {r3['change_summary']}")
+    if r3.get("pcm_found_anywhere"):
+        pcm_found_by = pcm_found_by or f"Change detector: {r3['change_summary']}"
+except Exception as e:
+    print(f"[3/3] ERROR: {e}")
 
-# ── Handle result ────────────────────────────────────────────────────────────
-if error:
-    print(f"[WARN] Check error: {error}")
-
-if login_status in ("failed", "error") and not pcm_found:
-    print(f"[SKIP] Login/check failed: {error}")
-    sys.exit(0)   # Don't fail the workflow for transient errors
-
-if not pcm_found:
-    print("[OK] PCM scorecard not available yet. Will check again at next scheduled run.")
+# ══════════════════════════════════════════════════════════════════════════════
+# RESULT
+# ══════════════════════════════════════════════════════════════════════════════
+if not pcm_found_by:
+    print("\n[OK] PCM scorecard not available yet. Will check again at next scheduled run.")
     sys.exit(0)
 
-# ── PCM FOUND — Send alerts! ─────────────────────────────────────────────────
+# PCM FOUND!
 print("\n" + "🚨" * 30)
-print("*** MHT-CET PCM SCORECARD IS AVAILABLE! ***")
+print(f"*** MHT-CET PCM SCORECARD DETECTED! ***")
+print(f"*** Source: {pcm_found_by} ***")
 print("🚨" * 30 + "\n")
 
-from twilio.rest import Client
-
-sid       = os.environ["TWILIO_ACCOUNT_SID"]
-token     = os.environ["TWILIO_AUTH_TOKEN"]
-from_num  = os.environ["TWILIO_PHONE_NUMBER"]
-to_num    = os.environ["YOUR_PHONE_NUMBER"]
-wa_from   = os.environ.get("TWILIO_WHATSAPP_NUMBER", "+14155238886")
-
-client = Client(sid, token)
-
-# ── Phone Call ───────────────────────────────────────────────────────────────
 twiml = (
     "<Response>"
     "<Say voice='alice' language='en-IN'>"
@@ -95,17 +135,10 @@ twiml = (
     "</Say>"
     "</Response>"
 )
-
-try:
-    call = client.calls.create(twiml=twiml, to=to_num, from_=from_num)
-    print(f"[OK] Phone call initiated! SID: {call.sid} -> {to_num}")
-except Exception as e:
-    print(f"[ERROR] Call failed: {e}")
-
-# ── WhatsApp ─────────────────────────────────────────────────────────────────
 wa_body = (
     "🚨 *MHT-CET PCM SCORECARD IS NOW AVAILABLE!* 🚨\n\n"
     "✅ Your PCM score card is LIVE RIGHT NOW!\n\n"
+    f"🔍 Detected by: {pcm_found_by}\n\n"
     "👉 Login here IMMEDIATELY:\n"
     "https://portal-2026.maharashtracet.org\n\n"
     "📋 Steps:\n"
@@ -116,15 +149,6 @@ wa_body = (
     "⚡ DO NOT DELAY — Download NOW!"
 )
 
-try:
-    msg = client.messages.create(
-        body=wa_body,
-        from_=f"whatsapp:{wa_from}",
-        to=f"whatsapp:{to_num}"
-    )
-    print(f"[OK] WhatsApp sent! SID: {msg.sid} -> {to_num}")
-except Exception as e:
-    print(f"[ERROR] WhatsApp failed: {e}")
-
+send_alerts(wa_body, twiml)
 print("\n[DONE] All alerts dispatched!")
 sys.exit(0)

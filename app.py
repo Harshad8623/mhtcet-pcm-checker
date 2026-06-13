@@ -376,10 +376,19 @@ def _fire_alerts():
     call_result = _make_call_safe()
     logger.info(f"Call result: {call_result}")
 
-    # 3. Mark alert as sent — no more notifications
+    # 3. Mark alert as sent in DB — dashboard shows correct state
     update_status(alert_sent=True, pcm_found=True, checker_running=False)
-    scheduler.pause()
-    logger.info("[OK] All alerts sent. Checker paused.")
+
+    # 4. Pause ONLY the scorecard checker — keep public monitor + change detector running
+    #    (they may detect the result via a different signal while scorecard check is paused)
+    try:
+        job = scheduler.get_job("mhtcet_check")
+        if job:
+            job.pause()
+            logger.info("[OK] Scorecard check job paused (public monitor + change detector still active).")
+    except Exception:
+        scheduler.pause()  # fallback
+    logger.info("[OK] PCM alerts sent.")
 
 
 def _send_whatsapp_safe(message: str, notif_type: str) -> dict:
