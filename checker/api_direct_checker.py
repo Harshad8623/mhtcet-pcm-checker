@@ -44,7 +44,7 @@ PCM_JSON_PHRASES = [
     "pcm attempt 2",
     "pcm group attempt 2",
     "pcm second attempt",
-    "attempt 2",   # catches {"attempt": 2, "exam": "pcm"} style JSON
+    # Note: removed bare "attempt 2" — too broad, matches any config/metadata JSON
 ]
 
 # Phrases that confirm it's a scorecard/result (not a config value)

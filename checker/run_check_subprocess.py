@@ -444,22 +444,30 @@ def run():
             pcm_found      = False
             pcm_api_source = None
 
+            # CRITICAL: Only Attempt 2 specific phrases — Attempt 1 JSON data
+            # ('mht-cet (pcm', 'pcm group') is already in the API response.
+            # Generic phrases would fire a false alert every single check.
             PCM_API_PHRASES = [
-                "mht-cet (pcm", "mht-cet(pcm", "pcm group",
-                "mhtcet pcm", "pcm_group", "pcm-group",
+                "mht-cet (pcm) 2026 (attempt 2)",
+                "mht-cet (pcm) attempt 2",
+                "pcm attempt 2",
+                "pcm group attempt 2",
+                "pcm second attempt",
             ]
+            A2_CONFIRM = ["attempt 2", "attempt_2", "attempt-2", "second attempt", "2nd attempt"]
 
             for api_call in captured_api:
                 api_str = json.dumps(api_call["body"]).lower()
-                if any(ph in api_str for ph in PCM_API_PHRASES):
-                    # Must also look like a scorecard/result entry, not a config value
-                    if any(w in api_str for w in ["scorecard", "score_card",
-                                                   "result", "attempt", "download"]):
-                        pcm_found      = True
-                        pcm_api_source = api_call["url"]
-                        print(f"[API-DETECT] PCM found in API response: {api_call['url']}",
-                              file=sys.stderr)
-                        break
+                has_pcm    = any(ph in api_str for ph in PCM_API_PHRASES)
+                has_a2     = any(a  in api_str for a  in A2_CONFIRM)
+                has_sc_ctx = any(w  in api_str for w  in ["scorecard", "score_card",
+                                                           "result", "download"])
+                if has_pcm and has_a2 and has_sc_ctx:
+                    pcm_found      = True
+                    pcm_api_source = api_call["url"]
+                    print(f"[API-DETECT] PCM Attempt 2 found in API response: {api_call['url']}",
+                          file=sys.stderr)
+                    break
 
             # Save discovered API endpoints to file for future direct monitoring
             if captured_api:
