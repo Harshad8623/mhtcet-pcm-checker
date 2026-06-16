@@ -21,10 +21,12 @@ HEADERS = {
     )
 }
 
-# Keywords that indicate a PCM Attempt 2 result/notice
-# Attempt 1 result declared on 2026-06-16 — now watching for Attempt 2
+# ONLY Attempt 2 specific phrases
+# CRITICAL: cetcell.mahacet.org still has Attempt 1 PCM result notices posted.
+# Generic phrases like 'result declared for mht-cet (pcm)' STILL match those
+# notices — would trigger a false alert on the very first check.
+# ONLY use phrases that contain 'attempt 2' or 'second attempt'.
 PCM_KEYWORDS = [
-    # ── Attempt 2 — PRIMARY ──
     "mht-cet (pcm) 2026 (attempt 2)",
     "mht-cet (pcm) attempt 2",
     "mhtcet (pcm) attempt 2",
@@ -34,17 +36,9 @@ PCM_KEYWORDS = [
     "result declared for mht-cet (pcm) attempt 2",
     "mht-cet (pcm) 2026 (attempt 2) result",
     "pcm second attempt result",
-    # ── Generic PCM result phrases — SECONDARY ──
-    "result declared for mht-cet (pcm",
-    "mht-cet (pcm) result declared",
-    "pcm result declared",
-    "pcm score card available in candidate",
-    "pcm scorecard available in candidate",
-    "result summary:mht-cet 2026 (pcm",
-    "result summary : mht-cet 2026 (pcm",
-    "result summary:mht-cet(pcm",
-    "pcm group first attempt result",
-    "mht-cet (pcm group",
+    "pcm attempt 2",
+    "attempt 2 result declared",
+    "second attempt result declared",
 ]
 
 

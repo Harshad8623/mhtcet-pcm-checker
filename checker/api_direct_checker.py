@@ -34,29 +34,28 @@ SCORECARD_APIS = [
     f"{PORTAL_ORIGIN}/api/v1/scorecard",
 ]
 
-# PCM-specific phrases in JSON response — updated for ATTEMPT 2
-# Attempt 1 result declared 2026-06-16
+# PCM Attempt 2 specific phrases in JSON response
+# CRITICAL: Generic phrases like 'mht-cet (pcm', 'pcm group' match
+# Attempt 1 data which is already in the API. Only keep Attempt 2
+# specific strings that cannot appear until Attempt 2 is released.
 PCM_JSON_PHRASES = [
-    # Attempt 2 — primary
     "mht-cet (pcm) 2026 (attempt 2)",
     "mht-cet (pcm) attempt 2",
     "pcm attempt 2",
     "pcm group attempt 2",
     "pcm second attempt",
-    # Generic — secondary (catches any PCM scorecard card)
-    "mht-cet (pcm",
-    "mht-cet(pcm",
-    "pcm group",
-    "mhtcet_pcm",
-    "pcm_group",
-    "pcm-group",
+    "attempt 2",   # catches {"attempt": 2, "exam": "pcm"} style JSON
 ]
 
 # Phrases that confirm it's a scorecard/result (not a config value)
+# For Attempt 2 we REQUIRE 'attempt 2' or 'second' to be present
 SCORECARD_CONFIRM = [
     "scorecard", "score_card", "score-card",
-    "result", "attempt", "download", "available",
+    "result", "download", "available",
 ]
+
+# Extra guard: response must also contain '2' or 'second' to rule out Attempt 1
+ATTEMPT2_CONFIRM = ["attempt 2", "attempt_2", "attempt-2", "second attempt", "2nd attempt"]
 
 # BUG FIX #2: Track session expiry separately so we don't loop through
 # all 9 URLs when the first 401 already tells us the session is dead.
@@ -188,20 +187,22 @@ def check_api_direct() -> dict:
 
             body_low = body_raw.lower()
 
-            # Check for PCM phrases in JSON response
-            has_pcm = any(p in body_low for p in PCM_JSON_PHRASES)
-            has_scorecard_ctx = any(w in body_low for w in SCORECARD_CONFIRM)
+            # Check for PCM Attempt 2 in JSON response
+            # ALL THREE must be true to avoid false-alerting on Attempt 1 data
+            has_pcm       = any(p in body_low for p in PCM_JSON_PHRASES)
+            has_sc_ctx    = any(w in body_low for w in SCORECARD_CONFIRM)
+            has_attempt2  = any(a in body_low for a in ATTEMPT2_CONFIRM)
 
-            if has_pcm and has_scorecard_ctx:
+            if has_pcm and has_sc_ctx and has_attempt2:
                 result["pcm_found"] = True
                 logger.warning(
-                    f"[API-DIRECT] *** PCM FOUND in API response! "
+                    f"[API-DIRECT] *** PCM ATTEMPT 2 FOUND in API response! "
                     f"URL: {url} | Snippet: {body_raw[:100]} ***"
                 )
             else:
                 logger.info(
                     f"[API-DIRECT] {url} → {resp.status_code} | "
-                    f"PCM: {has_pcm} | SC-ctx: {has_scorecard_ctx} | "
+                    f"PCM: {has_pcm} | SC: {has_sc_ctx} | A2: {has_attempt2} | "
                     f"Snippet: {body_raw[:80]}"
                 )
 

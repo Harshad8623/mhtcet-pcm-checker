@@ -42,10 +42,10 @@ CETCELL_RESULT_URLS = [
     "https://cetcell.mahacet.org/wp-json/wp/v2/posts?per_page=5&_fields=title,link,date",
 ]
 
-# SPECIFIC phrases that indicate a PCM ATTEMPT 2 RESULT DECLARATION
-# Attempt 1 declared on 2026-06-16 — now monitoring for Attempt 2
+# ONLY Attempt 2 specific phrases
+# CRITICAL: cetcell pages still have Attempt 1 PCM result content.
+# Generic phrases immediately match those — false alert on first run.
 PCM_RESULT_DECLARED_PHRASES = [
-    # ── Attempt 2 — PRIMARY TARGETS ──
     "mht-cet (pcm) 2026 (attempt 2)",
     "mht-cet (pcm) attempt 2",
     "mhtcet (pcm) attempt 2",
@@ -55,19 +55,9 @@ PCM_RESULT_DECLARED_PHRASES = [
     "pcm group attempt 2 result",
     "pcm group second attempt result",
     "pcm second attempt result",
-    # ── Generic PCM declaration phrases — SECONDARY ──
-    "result declared for mht-cet (pcm",
-    "result declared for mht-cet(pcm",
-    "mht-cet (pcm) result declared",
-    "mht-cet(pcm) result declared",
-    "pcm result declared",
-    "pcm score card available in candidate",
-    "pcm scorecard available in candidate",
-    "pcm group second attempt result",
-    "result summary:mht-cet 2026 (pcm",
-    "result summary : mht-cet 2026 (pcm",
-    "result summary:mht-cet(pcm",
-    "mht-cet (pcm group",
+    "pcm attempt 2",
+    "attempt 2 result declared",
+    "second attempt result declared",
 ]
 
 # NOTE: scorecard.mhexam.com URLs (e.g. /MAH-PCB-DO1BAM3Y/) require a secret

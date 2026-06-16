@@ -26,29 +26,26 @@ PORTAL_URL = "https://portal-2026.maharashtracet.org/"
 SCREENSHOTS_DIR = Path(__file__).parent.parent / "screenshots"
 SESSION_FILE    = Path(__file__).parent.parent / "session_state.json"
 
-# PCM scorecard keywords — ONLY match when PCM text is EXPLICITLY present
-# Updated for ATTEMPT 2 (Attempt 1 result already declared on 2026-06-16)
+# PCM scorecard keywords — ONLY Attempt 2 specific phrases
+# CRITICAL: Attempt 1 is already declared, so generic phrases like
+# 'pcm group', 'pcm scorecard', 'mht-cet (pcm)' permanently appear
+# on the portal dashboard. Using them would fire false alerts every 5 min.
+# ONLY use phrases that can ONLY appear when Attempt 2 is released.
 PCM_KEYWORDS = [
-    # ── Attempt 2 — PRIMARY TARGETS ──
     "mht-cet (pcm) 2026 (attempt 2)",
     "mht cet (pcm) 2026 (attempt 2)",
     "mhtcet (pcm) 2026 (attempt 2)",
     "mht-cet (pcm) attempt 2",
+    "(pcm) attempt 2",
+    "(pcm) 2nd attempt",
     "pcm attempt 2",
     "pcm group attempt 2",
     "pcm group second attempt",
     "pcm second attempt",
-    "(pcm) attempt 2",
-    "(pcm) 2nd attempt",
-    # ── Generic PCM phrases (also match Attempt 2 card) ──
-    "mht-cet (pcm)",
-    "mht cet (pcm)",
-    "mhtcet (pcm)",
-    "pcm scorecard",
-    "pcm score card",
-    "pcm group",
-    "pcm result",
-    "(pcm) 2026",
+    "attempt 2 score card",
+    "attempt 2 scorecard",
+    "second attempt score card",
+    "second attempt scorecard",
 ]
 
 
@@ -505,21 +502,21 @@ def run():
                 # UI keyword scan — ONLY flag if PCM explicitly present
                 pcm_found = any(kw in body_lower for kw in PCM_KEYWORDS)
 
-                # Extra: scan visible elements for PCM scorecard cards
+                # Extra: scan visible elements for PCM Attempt 2 scorecard card
+                # CRITICAL: Must require 'attempt 2' or 'second' — Attempt 1 card
+                # is already visible on the dashboard and would match 'pcm'+'score'.
                 if not pcm_found:
+                    A2_MARKERS = ["attempt 2", "second attempt", "2nd attempt", "attempt-2"]
                     for sel in ["div", "li", "p", "span", "td", "h3", "h4"]:
                         try:
                             els = page.query_selector_all(sel)
                             for el in els[:50]:
                                 try:
                                     txt = el.inner_text().strip().lower()
-                                    # BUG FIX 5: Don't exclude elements containing 'pcb'.
-                                    # A real dashboard shows BOTH PCM and PCB cards.
-                                    # We only want: txt has 'pcm' + scorecard context.
                                     if ("pcm" in txt and
-                                        any(w in txt for w in ["score", "result", "attempt"])):
+                                        any(m in txt for m in A2_MARKERS)):
                                         pcm_found = True
-                                        print(f"[STEP4] PCM element: '{txt[:80]}'", file=sys.stderr)
+                                        print(f"[STEP4] PCM Attempt 2 element: '{txt[:80]}'", file=sys.stderr)
                                         break
                                 except Exception:
                                     continue
