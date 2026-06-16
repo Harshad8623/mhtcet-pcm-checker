@@ -34,10 +34,16 @@ SCORECARD_APIS = [
     f"{PORTAL_ORIGIN}/api/v1/scorecard",
 ]
 
-# PCM-specific phrases in JSON response
-# BUG FIX #1: '"pcm"' was too generic — any JSON with key "pcm" would match
-# e.g. {"pcm": false} would fire a false alert. Removed it.
+# PCM-specific phrases in JSON response — updated for ATTEMPT 2
+# Attempt 1 result declared 2026-06-16
 PCM_JSON_PHRASES = [
+    # Attempt 2 — primary
+    "mht-cet (pcm) 2026 (attempt 2)",
+    "mht-cet (pcm) attempt 2",
+    "pcm attempt 2",
+    "pcm group attempt 2",
+    "pcm second attempt",
+    # Generic — secondary (catches any PCM scorecard card)
     "mht-cet (pcm",
     "mht-cet(pcm",
     "pcm group",

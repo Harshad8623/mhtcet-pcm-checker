@@ -27,22 +27,28 @@ SCREENSHOTS_DIR = Path(__file__).parent.parent / "screenshots"
 SESSION_FILE    = Path(__file__).parent.parent / "session_state.json"
 
 # PCM scorecard keywords — ONLY match when PCM text is EXPLICITLY present
-# DO NOT include 'get score card' alone — PCB also has that button!
-# BUG FIX 1: Removed raw 'PCM' and 'PCB' — they are 3-char substrings
-# that appear inside many unrelated words (e.g. 'topically', 'pcb circuit').
-# Only use full, unambiguous phrases.
+# Updated for ATTEMPT 2 (Attempt 1 result already declared on 2026-06-16)
 PCM_KEYWORDS = [
-    "mht-cet (pcm)",           # exact card label when PCM is released
+    # ── Attempt 2 — PRIMARY TARGETS ──
+    "mht-cet (pcm) 2026 (attempt 2)",
+    "mht cet (pcm) 2026 (attempt 2)",
+    "mhtcet (pcm) 2026 (attempt 2)",
+    "mht-cet (pcm) attempt 2",
+    "pcm attempt 2",
+    "pcm group attempt 2",
+    "pcm group second attempt",
+    "pcm second attempt",
+    "(pcm) attempt 2",
+    "(pcm) 2nd attempt",
+    # ── Generic PCM phrases (also match Attempt 2 card) ──
+    "mht-cet (pcm)",
     "mht cet (pcm)",
     "mhtcet (pcm)",
-    "MHT-CET (PCM) 2026",
-    "MHT-CET (PCM) 2026 (Attempt 1)",
     "pcm scorecard",
     "pcm score card",
     "pcm group",
     "pcm result",
     "(pcm) 2026",
-    "pcm attempt",
 ]
 
 

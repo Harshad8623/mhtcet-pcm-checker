@@ -21,10 +21,20 @@ HEADERS = {
     )
 }
 
-# Keywords that indicate a PCM result/notice
-# SPECIFIC phrases that prove a PCM notice/result was posted
-# Must be UNIQUE to PCM — not present in any other CET result announcement
+# Keywords that indicate a PCM Attempt 2 result/notice
+# Attempt 1 result declared on 2026-06-16 — now watching for Attempt 2
 PCM_KEYWORDS = [
+    # ── Attempt 2 — PRIMARY ──
+    "mht-cet (pcm) 2026 (attempt 2)",
+    "mht-cet (pcm) attempt 2",
+    "mhtcet (pcm) attempt 2",
+    "pcm attempt 2 result declared",
+    "pcm group second attempt result",
+    "pcm group attempt 2 result",
+    "result declared for mht-cet (pcm) attempt 2",
+    "mht-cet (pcm) 2026 (attempt 2) result",
+    "pcm second attempt result",
+    # ── Generic PCM result phrases — SECONDARY ──
     "result declared for mht-cet (pcm",
     "mht-cet (pcm) result declared",
     "pcm result declared",
@@ -34,7 +44,6 @@ PCM_KEYWORDS = [
     "result summary : mht-cet 2026 (pcm",
     "result summary:mht-cet(pcm",
     "pcm group first attempt result",
-    "mht-cet (pcm) 2026 (attempt 1) result",
     "mht-cet (pcm group",
 ]
 

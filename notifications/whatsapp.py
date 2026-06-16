@@ -15,10 +15,10 @@ LOGIN_URL = os.getenv("LOGIN_URL", "https://cetcell.mahacet.org")
 
 MSG_PCM_FOUND = (
     "🚨 *MHTCET ALERT* 🚨\n\n"
-    "✅ *PCM Scorecard is NOW AVAILABLE!*\n\n"
-    "📋 MHT-CET (PCM) 2026 Score Card can be downloaded.\n\n"
+    "✅ *PCM Attempt 2 Scorecard is NOW AVAILABLE!*\n\n"
+    "📋 MHT-CET (PCM) 2026 Attempt 2 Score Card can be downloaded.\n\n"
     f"🔗 Login immediately: {LOGIN_URL}\n\n"
-    "⏰ Don't delay — download your scorecard now!\n"
+    "⏰ Don't delay — download your Attempt 2 scorecard now!\n"
     "_This is an automated alert from your MHTCET Checker._"
 )
 
@@ -45,9 +45,9 @@ MSG_WEBSITE_DOWN = (
 
 MSG_CHECKER_STARTED = (
     "✅ *MHTCET Checker Started*\n\n"
-    "🤖 Your MHTCET PCM Scorecard checker is now running.\n"
+    "🤖 Your MHTCET PCM **Attempt 2** Scorecard checker is now running.\n"
     f"🔍 Monitoring: {LOGIN_URL}\n"
-    "📲 You will be notified via WhatsApp & Phone Call when PCM Scorecard is available.\n\n"
+    "📲 You will be notified via WhatsApp & Phone Call when PCM Attempt 2 Scorecard is available.\n\n"
     "_Stay tuned!_"
 )
 
