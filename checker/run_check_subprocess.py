@@ -186,7 +186,10 @@ def run():
             except PwTimeout:
                 result["error"] = "Portal timed out — check internet connection."
                 result["screenshot"] = save_screenshot(page, "timeout")
-                print(json.dumps(result))
+                # BUG FIX: was print(json.dumps(result)) — goes to stdout but
+                # caller reads last JSON line; use sys.stdout.write for consistency
+                sys.stdout.write(json.dumps(result) + "\n")
+                sys.stdout.flush()
                 return
 
             # Wait for React hydration

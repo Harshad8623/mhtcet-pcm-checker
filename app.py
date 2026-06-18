@@ -195,7 +195,9 @@ def run_check():
                     _send_whatsapp_safe(MSG_LOGIN_FAILED, "whatsapp_error")
                 elif "timeout" in error_msg.lower() or "unreachable" in error_msg.lower():
                     consecutive = get_status().consecutive_errors or 0
-                    if consecutive >= 3:
+                    # BUG FIX: Only send website-down alert ONCE (at exactly 3 errors)
+                    # Previously fired every 5 min after 3 errors = 78 duplicate WhatsApps
+                    if consecutive == 3:
                         _send_whatsapp_safe(MSG_WEBSITE_DOWN, "whatsapp_error")
             return
 
@@ -217,8 +219,8 @@ def run_check():
             return
 
         # ── React to final result ─────────────────────────────────────────
-        pcm_found = result.get("pcm_found", False)
-
+        # BUG FIX: pcm_found was already read from result on line 178.
+        # Removed duplicate re-read here to keep a single source of truth.
         log_check(
             login_status="success",
             pcm_found=pcm_found,
