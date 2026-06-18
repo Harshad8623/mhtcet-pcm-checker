@@ -100,17 +100,27 @@ def run():
     }
 
     with sync_playwright() as pw:
+        # Railway Linux Docker container requires specific flags.
+        # "Failed to launch zygote process" = /dev/shm too small (64MB default).
+        # Fix: --no-zygote + --no-sandbox + --disable-dev-shm-usage together.
+        CHROMIUM_ARGS = [
+            "--no-sandbox",
+            "--disable-setuid-sandbox",
+            "--disable-dev-shm-usage",     # use /tmp instead of /dev/shm
+            "--no-zygote",                 # skip zygote — fixes Railway crash
+            "--disable-gpu",
+            "--disable-software-rasterizer",
+            "--disable-extensions",
+            "--disable-background-networking",
+            "--disable-default-apps",
+            "--mute-audio",
+            "--no-first-run",
+            "--disable-blink-features=AutomationControlled",
+        ]
         try:
             browser = pw.chromium.launch(
                 headless=True,
-                args=[
-                    "--no-sandbox",
-                    "--disable-setuid-sandbox",
-                    "--disable-dev-shm-usage",
-                    "--disable-gpu",
-                    "--single-process",
-                    "--disable-blink-features=AutomationControlled",
-                ]
+                args=CHROMIUM_ARGS,
             )
         except Exception as launch_err:
             result["error"] = f"Chromium launch failed: {launch_err}"
